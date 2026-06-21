@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export function docId(value: any): string {
   if (!value) return "";
   if (typeof value === "string") return value;
@@ -51,41 +52,70 @@ export function normalizeEvent(e: any) {
       description: p?.description || "",
       items: (p?.items || []).map((it: any) => ({
         id: docId(it?._id) || it?.id,
-        songId: it?.songId,
+        songId: docId(it?.songId) || it?.songId,
         partName: it?.partName || "Full Song",
       })),
     })),
   };
 }
 
+function normalizePartLines(lines: any[] = []) {
+  return lines.map((line: any) => ({
+    type: line?.type || "lyric_only",
+    chordLine: line?.chordLine || "",
+    lyricLine: line?.lyricLine || "",
+  }));
+}
+
+function buildPartsFromGroupedLines(lines: any[] = []) {
+  if (!Array.isArray(lines) || !lines.length) return [];
+
+  const groups = new Map<string, any[]>();
+  lines.forEach((line: any) => {
+    const name = line?.section || line?.sectionName || "Full Song";
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name)?.push(line);
+  });
+
+  return [...groups.entries()].map(([name, groupedLines]) => ({
+    name,
+    chords: groupedLines.map((line: any) => line?.chordLine || "").join("\n"),
+    lyrics: groupedLines.map((line: any) => line?.lyricLine || "").join("\n"),
+    lines: normalizePartLines(groupedLines),
+  }));
+}
+
 export function normalizeSong(s: any) {
   const id = s?.songId || docId(s?._id) || s?.id;
-  const normalizePartLines = (lines: any[] = []) =>
-    lines.map((line: any) => ({
-      type: line?.type || "lyric_only",
-      chordLine: line?.chordLine || "",
-      lyricLine: line?.lyricLine || "",
-    }));
   const partsFromSections =
     Array.isArray(s?.sections) && s.sections.length
       ? s.sections.map((section: any) => ({
           name: section?.name || section?.category || "Section",
-          chords: (section?.lines || []).map((l: any) => l?.chordLine || "").join("\n"),
-          lyrics: (section?.lines || []).map((l: any) => l?.lyricLine || "").join("\n"),
+          chords: (section?.lines || []).map((line: any) => line?.chordLine || "").join("\n"),
+          lyrics: (section?.lines || []).map((line: any) => line?.lyricLine || "").join("\n"),
           lines: normalizePartLines(section?.lines || []),
         }))
       : [];
+  const partsFromGroupedLines = buildPartsFromGroupedLines(s?.lines || []);
   const partsFromLines =
     Array.isArray(s?.lines) && s.lines.length
       ? [
           {
             name: "Full Song",
-            chords: s.lines.map((l: any) => l?.chordLine || "").join("\n"),
-            lyrics: s.lines.map((l: any) => l?.lyricLine || "").join("\n"),
+            chords: s.lines.map((line: any) => line?.chordLine || "").join("\n"),
+            lyrics: s.lines.map((line: any) => line?.lyricLine || "").join("\n"),
             lines: normalizePartLines(s.lines),
           },
         ]
       : [];
+
+  const hasRenderableSectionLines = partsFromSections.some(
+    (part) =>
+      (part.lines && part.lines.length > 0) ||
+      part.chords.trim().length > 0 ||
+      part.lyrics.trim().length > 0,
+  );
+
   return {
     id,
     title: s?.title || "Untitled Song",
@@ -102,10 +132,14 @@ export function normalizeSong(s: any) {
     popularity: s?.popularity || 50,
     difficulty: s?.difficulty || "Easy",
     capo: s?.capo || "None",
-    key: s?.key || "—",
+    key: s?.key || "-",
     tags: s?.tags || [s?.source || "chordslk"],
     beat: s?.timeSignature || s?.beat || "4/4",
-    parts: partsFromSections.length ? partsFromSections : partsFromLines,
+    parts: hasRenderableSectionLines
+      ? partsFromSections
+      : partsFromGroupedLines.length
+        ? partsFromGroupedLines
+        : partsFromLines,
     rawText: s?.rawText || "",
     isNew: false,
   };
