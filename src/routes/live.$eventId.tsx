@@ -284,10 +284,12 @@ function LivePage() {
 
         <div className="min-w-0 flex-1 text-center">
           <p className="flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-amber-glow">
-            <span className="size-2 rounded-full bg-red-500 animate-pulse" /> Live · {eventData.name}
+            <span className="size-2 rounded-full bg-red-500 animate-pulse" /> Live ·{" "}
+            {eventData.name}
           </p>
           <p className="truncate text-xs text-white/40">
-            {Math.min(activeIndex + 1, items.length || 1)} / {items.length} · Scroller: {scrollerName}
+            {Math.min(activeIndex + 1, items.length || 1)} / {items.length} · Scroller:{" "}
+            {scrollerName}
           </p>
           {error && <p className="truncate text-[10px] text-amber-glow">{error}</p>}
         </div>

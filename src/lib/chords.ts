@@ -7,8 +7,8 @@ const FLAT_TO_SHARP: Record<string, string> = {
   Bb: "A#",
   Cb: "B",
   Fb: "E",
-  E#: "F",
-  B#: "C",
+  "E#": "F",
+  "B#": "C",
 };
 
 function normalizeRoot(root: string) {
@@ -19,7 +19,7 @@ function transposeRoot(root: string, semitones: number) {
   const normalized = normalizeRoot(root);
   const index = SHARP_NOTES.indexOf(normalized);
   if (index === -1) return root;
-  const nextIndex = (index + semitones % 12 + 12) % 12;
+  const nextIndex = (index + (semitones % 12) + 12) % 12;
   return SHARP_NOTES[nextIndex];
 }
 
@@ -40,10 +40,13 @@ function transposeToken(token: string, semitones: number) {
 
 export function transposeChordLine(line: string, semitones: number) {
   if (!line || !semitones) return line;
-  return line.replace(
-    /\b([A-G](?:#|b)?(?:m|maj|min|sus|dim|aug|add|no|\d|\/|#|b|\(|\)|-|\+)*)\b/g,
-    (token) => transposeToken(token, semitones),
-  );
+  return line
+    .split(/(\s+|\|)/g)
+    .map((chunk) => {
+      if (!chunk || chunk === "|" || /^\s+$/.test(chunk)) return chunk;
+      return transposeToken(chunk, semitones);
+    })
+    .join("");
 }
 
 export function transposeKeyLabel(key: string, semitones: number) {

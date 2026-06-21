@@ -4,15 +4,7 @@ import { transposeChordLine, transposeKeyLabel } from "@/lib/chords";
 import { api, API_ENABLED } from "@/lib/api";
 import { normalizeSong } from "@/lib/view-models";
 import { useEffect, useRef, useState } from "react";
-import {
-  ChevronLeft,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Pause,
-  Play,
-  Plus,
-} from "lucide-react";
+import { ChevronLeft, Maximize2, Minimize2, Minus, Pause, Play, Plus } from "lucide-react";
 
 export const Route = createFileRoute("/songs/$songId")({
   head: () => ({
@@ -49,6 +41,11 @@ const FONT_SCALE_CLASSES: Record<FontScale, { chord: string; lyric: string; gap:
     gap: "space-y-2",
   },
 };
+
+function looksLikeChordRow(value: string) {
+  if (!value) return false;
+  return /\|/.test(value) && /[A-G](?:#|b)?/.test(value) && !/[a-z]{3,}/.test(value);
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -337,12 +334,18 @@ export function SongPartBlock({
                     {transposeChordLine(line.chordLine, transpose)}
                   </pre>
                 )}
-                {line.lyricLine && (
-                  <pre
-                    className={`whitespace-pre-wrap font-mono leading-[1.8] text-white/85 ${fontClasses.lyric}`}
-                  >
-                    {line.lyricLine}
+                {line.lyricLine && looksLikeChordRow(line.lyricLine) ? (
+                  <pre className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}>
+                    {transposeChordLine(line.lyricLine, transpose)}
                   </pre>
+                ) : (
+                  line.lyricLine && (
+                    <pre
+                      className={`whitespace-pre-wrap font-mono leading-[1.8] text-white/85 ${fontClasses.lyric}`}
+                    >
+                      {line.lyricLine}
+                    </pre>
+                  )
                 )}
               </div>
             );

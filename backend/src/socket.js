@@ -9,7 +9,15 @@ const rooms = new Map();
 function ensureRoom(eventId) {
   let r = rooms.get(eventId);
   if (!r) {
-    r = { index: 0, scrollTop: 0, scrollPct: 0, playing: false, speed: 1, scrollerId: null, viewers: new Map() };
+    r = {
+      index: 0,
+      scrollTop: 0,
+      scrollPct: 0,
+      playing: false,
+      speed: 1,
+      scrollerId: null,
+      viewers: new Map(),
+    };
     rooms.set(eventId, r);
   }
   return r;
@@ -19,8 +27,12 @@ export function getLiveState(eventId) {
   const r = rooms.get(eventId);
   if (!r) return null;
   return {
-    index: r.index, scrollTop: r.scrollTop, scrollPct: r.scrollPct,
-    playing: r.playing, speed: r.speed, scrollerId: r.scrollerId,
+    index: r.index,
+    scrollTop: r.scrollTop,
+    scrollPct: r.scrollPct,
+    playing: r.playing,
+    speed: r.speed,
+    scrollerId: r.scrollerId,
     viewerCount: r.viewers.size,
     viewers: [...r.viewers.values()],
   };
@@ -44,8 +56,12 @@ function emitViewerJoined(io, eventId, user) {
 
 function snapshot(r) {
   return {
-    index: r.index, scrollTop: r.scrollTop, scrollPct: r.scrollPct,
-    playing: r.playing, speed: r.speed, scrollerId: r.scrollerId,
+    index: r.index,
+    scrollTop: r.scrollTop,
+    scrollPct: r.scrollPct,
+    playing: r.playing,
+    speed: r.speed,
+    scrollerId: r.scrollerId,
   };
 }
 
@@ -104,19 +120,31 @@ export function attachSocket(io) {
       socket.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
     };
 
-    socket.on("live:index", onlyScroller((r, { index }) => {
-      r.index = index; r.scrollTop = 0; r.scrollPct = 0;
-      r.playing = false;
-    }));
+    socket.on(
+      "live:index",
+      onlyScroller((r, { index }) => {
+        r.index = index;
+        r.scrollTop = 0;
+        r.scrollPct = 0;
+        r.playing = false;
+      }),
+    );
 
-    socket.on("live:scroll", onlyScroller((r, { scrollTop = 0, scrollPct = 0 }) => {
-      r.scrollTop = scrollTop; r.scrollPct = scrollPct;
-    }));
+    socket.on(
+      "live:scroll",
+      onlyScroller((r, { scrollTop = 0, scrollPct = 0 }) => {
+        r.scrollTop = scrollTop;
+        r.scrollPct = scrollPct;
+      }),
+    );
 
-    socket.on("live:playback", onlyScroller((r, { playing, speed }) => {
-      if (typeof playing === "boolean") r.playing = playing;
-      if (typeof speed === "number") r.speed = speed;
-    }));
+    socket.on(
+      "live:playback",
+      onlyScroller((r, { playing, speed }) => {
+        if (typeof playing === "boolean") r.playing = playing;
+        if (typeof speed === "number") r.speed = speed;
+      }),
+    );
 
     function leave() {
       if (!currentEvent) return;
