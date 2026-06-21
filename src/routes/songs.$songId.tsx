@@ -127,10 +127,11 @@ function SongPage() {
 
       const targetIndex = Math.min(
         lines.length - 1,
-        lines.findIndex((line) => line.offsetTop > element.scrollTop + 4) + Math.max(stepLineCount - 1, 0),
+        lines.findIndex((line) => line.offsetTop > element.scrollTop + 4) +
+          Math.max(stepLineCount - 1, 0),
       );
       const fallbackIndex = Math.min(lines.length - 1, Math.max(stepLineCount - 1, 0));
-      const nextLine = lines[(targetIndex >= 0 ? targetIndex : fallbackIndex)] ?? null;
+      const nextLine = lines[targetIndex >= 0 ? targetIndex : fallbackIndex] ?? null;
       const max = Math.max(0, element.scrollHeight - element.clientHeight);
       if (nextLine) {
         element.scrollTo({
@@ -193,7 +194,9 @@ function SongPage() {
           <ChevronLeft className="size-4" /> Back to browse
         </Link>
 
-        <header className={`mb-6 grid gap-5 sm:grid-cols-[auto_1fr] items-end ${isFullscreen ? "hidden" : ""}`}>
+        <header
+          className={`mb-6 grid gap-5 sm:grid-cols-[auto_1fr] items-end ${isFullscreen ? "hidden" : ""}`}
+        >
           <img
             src={song.cover}
             alt={song.title}
@@ -225,7 +228,9 @@ function SongPage() {
           ref={readerRef}
           className={`rounded-3xl ${isFullscreen ? "bg-stage-black p-2 sm:p-4" : ""}`}
         >
-          <div className={`glass-card sticky z-40 mb-6 flex flex-wrap items-center gap-3 rounded-2xl p-3 sm:p-4 ${isFullscreen ? "top-0" : "top-16 sm:top-20"}`}>
+          <div
+            className={`glass-card sticky z-40 mb-6 flex flex-wrap items-center gap-3 rounded-2xl p-3 sm:p-4 ${isFullscreen ? "top-0" : "top-16 sm:top-20"}`}
+          >
             <button
               onClick={() => setScrolling((current) => !current)}
               className="glow-amber size-11 rounded-full bg-amber-glow text-stage-black flex items-center justify-center font-bold active:scale-95 transition-transform"
@@ -351,7 +356,11 @@ function SongPage() {
               onClick={toggleFullscreen}
               className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-white/70 hover:text-white"
             >
-              {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+              {isFullscreen ? (
+                <Minimize2 className="size-3.5" />
+              ) : (
+                <Maximize2 className="size-3.5" />
+              )}
               {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
             </button>
           </div>

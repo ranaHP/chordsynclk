@@ -67,6 +67,15 @@ function normalizePartLines(lines: any[] = []) {
   }));
 }
 
+function looksLikeChordLine(value: string) {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return (
+    /[A-G](?:#|b)?(?:m|maj|min|sus|dim|aug|add|\d|\/)?/.test(trimmed) && !/[a-z]{4,}/.test(trimmed)
+  );
+}
+
 function buildPartsFromGroupedLines(lines: any[] = []) {
   if (!Array.isArray(lines) || !lines.length) return [];
 
@@ -83,6 +92,62 @@ function buildPartsFromGroupedLines(lines: any[] = []) {
     lyrics: groupedLines.map((line: any) => line?.lyricLine || "").join("\n"),
     lines: normalizePartLines(groupedLines),
   }));
+}
+
+function buildPartsFromRawText(rawText = "") {
+  if (!rawText.trim()) return [];
+
+  const sections = rawText
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return sections
+    .map((block, sectionOrder) => {
+      const rows = block.split("\n");
+      let name = "Full Song";
+      const lines: Array<{ type: string; chordLine: string; lyricLine: string }> = [];
+
+      rows.forEach((rawRow) => {
+        const row = rawRow.replace(/\r/g, "");
+        const headingMatch = row.match(/^\[(.+)\]$/);
+        if (headingMatch) {
+          name = headingMatch[1]?.trim() || name;
+          return;
+        }
+
+        const previous = lines[lines.length - 1];
+        if (looksLikeChordLine(row)) {
+          lines.push({ type: "chord_lyric", chordLine: row, lyricLine: "" });
+          return;
+        }
+
+        if (previous && previous.chordLine && !previous.lyricLine) {
+          previous.lyricLine = row;
+          return;
+        }
+
+        lines.push({ type: row.trim() ? "lyric_only" : "blank", chordLine: "", lyricLine: row });
+      });
+
+      return {
+        name,
+        order: sectionOrder,
+        chords: lines
+          .map((line) => line.chordLine)
+          .filter(Boolean)
+          .join("\n"),
+        lyrics: lines
+          .map((line) => line.lyricLine)
+          .filter(Boolean)
+          .join("\n"),
+        lines,
+      };
+    })
+    .filter(
+      (part) =>
+        part.lines.length > 0 || part.chords.trim().length > 0 || part.lyrics.trim().length > 0,
+    );
 }
 
 export function normalizeSong(s: any) {
@@ -110,6 +175,7 @@ export function normalizeSong(s: any) {
           },
         ]
       : [];
+  const partsFromRawText = buildPartsFromRawText(s?.rawText || "");
 
   const hasRenderableSectionLines = partsFromSections.some(
     (part) =>
@@ -143,7 +209,9 @@ export function normalizeSong(s: any) {
       ? partsFromSections
       : partsFromGroupedLines.length
         ? partsFromGroupedLines
-        : partsFromLines,
+        : partsFromLines.length
+          ? partsFromLines
+          : partsFromRawText,
     rawText: s?.rawText || "",
     isNew: false,
   };
