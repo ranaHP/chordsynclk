@@ -22,7 +22,7 @@ router.get("/", async (req, res, next) => {
     const [songs, total] = await Promise.all([
       Song.find(filter)
         .select(
-          "songId title slug artistName artistSlug key timeSignature source views chordsUsed sectionCount description cover tempo vibe genre year language difficulty capo tags",
+          "songId title slug artistName artistSlug key timeSignature source views chordsUsed sectionCount description cover tempo vibe genre year language difficulty capo tags lineCount sectionFlow rawText lines sections",
         )
         .sort({ title: 1 })
         .skip((page - 1) * limit)
