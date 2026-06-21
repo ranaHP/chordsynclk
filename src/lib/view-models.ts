@@ -86,7 +86,9 @@ function buildPartsFromGroupedLines(lines: any[] = []) {
 }
 
 export function normalizeSong(s: any) {
-  const id = s?.songId || docId(s?._id) || s?.id;
+  const sourceId = docId(s?._id) || s?.id || "";
+  const publicSongId = s?.songId || "";
+  const id = publicSongId || sourceId;
   const partsFromSections =
     Array.isArray(s?.sections) && s.sections.length
       ? s.sections.map((section: any) => ({
@@ -118,6 +120,8 @@ export function normalizeSong(s: any) {
 
   return {
     id,
+    sourceId,
+    publicSongId,
     title: s?.title || "Untitled Song",
     artist: s?.artistName || s?.artist || "Unknown Artist",
     cover:

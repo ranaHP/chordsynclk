@@ -42,6 +42,16 @@ function isFullSongPartName(value?: string | null) {
   return normalized === "full song" || normalized === "fullsong" || normalized === "song";
 }
 
+function buildSongLookup(songs: ViewSong[]) {
+  const lookup = new Map<string, ViewSong>();
+  songs.forEach((song) => {
+    [song.id, song.publicSongId, song.sourceId]
+      .filter(Boolean)
+      .forEach((key) => lookup.set(String(key), song));
+  });
+  return lookup;
+}
+
 function LivePage() {
   const { eventId } = Route.useParams();
   const local = useData();
@@ -82,7 +92,7 @@ function LivePage() {
   } = useLiveSync({ eventId });
 
   const items = eventData?.playlists.flatMap((playlist) => playlist.items) ?? [];
-  const songMap = useMemo(() => new Map(songsData.map((song) => [song.id, song])), [songsData]);
+  const songMap = useMemo(() => buildSongLookup(songsData), [songsData]);
   const remoteScrollerId = liveState.scrollerId;
   const activeIndex = connected ? liveState.index : local.liveIndex;
   const activeScrollerId = connected ? remoteScrollerId : local.liveScrollerId;
@@ -124,10 +134,25 @@ function LivePage() {
           return;
         }
 
+        const prioritizedSongId =
+          uniqueSongIds[Math.min(activeIndex, Math.max(0, uniqueSongIds.length - 1))] ||
+          uniqueSongIds[0];
+
+        try {
+          const firstSongRes = await api.getSong(prioritizedSongId);
+          if (cancelled) return;
+          const firstSong = normalizeSong(firstSongRes.song);
+          setSongsData([firstSong]);
+          setLoading(false);
+        } catch {
+          // Keep loading the rest; batch may still resolve the correct song shape.
+        }
+
         try {
           const songsRes = await api.getSongsByIds(uniqueSongIds);
           if (cancelled) return;
-          setSongsData((songsRes.songs || []).map(normalizeSong));
+          const normalizedSongs = (songsRes.songs || []).map(normalizeSong);
+          setSongsData(normalizedSongs);
         } catch {
           const songResults = await Promise.all(
             uniqueSongIds.map(async (id) => {
@@ -156,7 +181,7 @@ function LivePage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId, localEvent]);
+  }, [activeIndex, eventId, localEvent]);
 
   useEffect(() => {
     if (!connected) return;
@@ -236,10 +261,11 @@ function LivePage() {
 
     const step = () => {
       const max = Math.max(0, element.scrollHeight - element.clientHeight);
-      const elapsed = liveState.playing
-        ? Math.max(0, Date.now() - remoteBaseTimeRef.current)
-        : 0;
-      const target = Math.min(max, remoteBaseScrollRef.current + (elapsed / 1000) * liveState.speed * 24);
+      const elapsed = liveState.playing ? Math.max(0, Date.now() - remoteBaseTimeRef.current) : 0;
+      const target = Math.min(
+        max,
+        remoteBaseScrollRef.current + (elapsed / 1000) * liveState.speed * 24,
+      );
       const delta = target - element.scrollTop;
 
       if (Math.abs(delta) > 0.5) {
