@@ -17,6 +17,11 @@ export interface LiveViewer {
   socketId: string;
 }
 
+export interface LiveJoinEvent {
+  user: LiveViewer;
+  ts: number;
+}
+
 interface UseLiveSyncOptions {
   eventId: string;
   enabled?: boolean;
@@ -41,6 +46,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     scrollerId: null,
   });
   const [viewers, setViewers] = useState<LiveViewer[]>([]);
+  const [joinEvent, setJoinEvent] = useState<LiveJoinEvent | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -58,6 +64,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     s.on("disconnect", () => setConnected(false));
     s.on("live:state", (st: LiveState) => setState((prev) => ({ ...prev, ...st })));
     s.on("live:viewers", ({ users }: { count: number; users: LiveViewer[] }) => setViewers(users));
+    s.on("live:viewer-joined", (event: LiveJoinEvent) => setJoinEvent(event));
 
     return () => {
       s.emit("live:leave");
@@ -74,6 +81,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     connected,
     state,
     viewers,
+    joinEvent,
     viewerCount: viewers.length,
     takeScroller: useCallback(() => emit("live:take-scroller"), [emit]),
     setIndex: useCallback((index: number) => emit("live:index", { index }), [emit]),

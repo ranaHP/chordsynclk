@@ -35,6 +35,13 @@ function broadcastViewers(io, eventId) {
   });
 }
 
+function emitViewerJoined(io, eventId, user) {
+  io.to(`event:${eventId}`).emit("live:viewer-joined", {
+    user,
+    ts: Date.now(),
+  });
+}
+
 function snapshot(r) {
   return {
     index: r.index, scrollTop: r.scrollTop, scrollPct: r.scrollPct,
@@ -72,6 +79,13 @@ export function attachSocket(io) {
       // Auto-assign first viewer as scroller
       if (!r.scrollerId) r.scrollerId = socket.user.sub;
       socket.emit("live:state", snapshot(r));
+      socket.to(`event:${eventId}`).emit("live:state", snapshot(r));
+      emitViewerJoined(io, eventId, {
+        id: socket.user.sub,
+        name: socket.user.name,
+        email: socket.user.email,
+        socketId: socket.id,
+      });
       broadcastViewers(io, eventId);
     });
 
@@ -92,6 +106,7 @@ export function attachSocket(io) {
 
     socket.on("live:index", onlyScroller((r, { index }) => {
       r.index = index; r.scrollTop = 0; r.scrollPct = 0;
+      r.playing = false;
     }));
 
     socket.on("live:scroll", onlyScroller((r, { scrollTop = 0, scrollPct = 0 }) => {

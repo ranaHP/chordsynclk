@@ -132,6 +132,17 @@
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes celebrate-pop {
+  0% { opacity: 0; transform: translateY(-12px) scale(0.92); }
+  18% { opacity: 1; transform: translateY(0) scale(1); }
+  82% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+@keyframes celebrate-float {
+  0% { opacity: 0; transform: translateY(0) scale(0.5); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-28px) scale(1); }
+}
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -140,3 +151,13 @@
 .animate-sync { animation: pulse-sync 2s infinite ease-in-out; }
 .animate-fade-in-up { animation: fade-in-up 0.5s ease-out both; }
 .animate-eq { animation: eq-bar 0.8s infinite ease-in-out; transform-origin: bottom; }
+.celebrate-burst { animation: celebrate-pop 2.6s ease both; }
+.celebrate-dot {
+  position: absolute;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-amber-glow);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.45);
+  animation: celebrate-float 1.4s ease-out infinite;
+}
