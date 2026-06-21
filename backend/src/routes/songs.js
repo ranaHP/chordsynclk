@@ -4,6 +4,8 @@ import Song from "../models/Song.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
 
 const router = Router();
+const SONG_DETAIL_FIELDS =
+  "songId title slug artistName artistSlug key timeSignature source views chordsUsed sectionCount description cover tempo vibe genre year language difficulty capo tags lineCount sectionFlow rawText lines sections";
 
 router.get("/", async (req, res, next) => {
   try {
@@ -21,9 +23,7 @@ router.get("/", async (req, res, next) => {
     if (q) filter.$or = [{ title: new RegExp(q, "i") }, { artistName: new RegExp(q, "i") }];
     const [songs, total] = await Promise.all([
       Song.find(filter)
-        .select(
-          "songId title slug artistName artistSlug key timeSignature source views chordsUsed sectionCount description cover tempo vibe genre year language difficulty capo tags lineCount sectionFlow rawText lines sections",
-        )
+        .select(SONG_DETAIL_FIELDS)
         .sort({ title: 1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -35,13 +35,43 @@ router.get("/", async (req, res, next) => {
   }
 });
 
+router.get("/batch", async (req, res, next) => {
+  try {
+    const rawIds = Array.isArray(req.query.ids)
+      ? req.query.ids
+      : String(req.query.ids || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+
+    if (!rawIds.length) return res.json({ songs: [] });
+
+    const objectIds = rawIds.filter((value) => mongoose.Types.ObjectId.isValid(value));
+    const songs = await Song.find({
+      $or: [{ songId: { $in: rawIds } }, ...(objectIds.length ? [{ _id: { $in: objectIds } }] : [])],
+    }).select(SONG_DETAIL_FIELDS);
+
+    const orderMap = new Map(rawIds.map((id, index) => [String(id), index]));
+    songs.sort((left, right) => {
+      const leftOrder = orderMap.get(String(left.songId)) ?? orderMap.get(String(left._id)) ?? 0;
+      const rightOrder =
+        orderMap.get(String(right.songId)) ?? orderMap.get(String(right._id)) ?? 0;
+      return leftOrder - rightOrder;
+    });
+
+    res.json({ songs });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/:songId", async (req, res, next) => {
   try {
     const songId = req.params.songId;
     const filter = mongoose.Types.ObjectId.isValid(songId)
       ? { $or: [{ songId }, { _id: songId }] }
       : { songId };
-    const song = await Song.findOne(filter);
+    const song = await Song.findOne(filter).select(SONG_DETAIL_FIELDS);
     if (!song) return res.status(404).json({ error: "Song not found" });
     res.json({ song });
   } catch (e) {

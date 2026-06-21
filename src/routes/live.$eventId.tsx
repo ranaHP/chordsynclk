@@ -64,6 +64,10 @@ function LivePage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const applyingRemoteScroll = useRef(false);
+  const followerFrameRef = useRef<number | null>(null);
+  const lastScrollEmitAt = useRef(0);
+  const remoteBaseScrollRef = useRef(0);
+  const remoteBaseTimeRef = useRef(0);
 
   const {
     connected,
@@ -86,6 +90,8 @@ function LivePage() {
 
   const current = items[activeIndex];
   const song = current ? songMap.get(current.songId) : null;
+  const prevSong = activeIndex > 0 ? songMap.get(items[activeIndex - 1]?.songId) : null;
+  const nextSong = items[activeIndex + 1] ? songMap.get(items[activeIndex + 1]?.songId) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -113,19 +119,30 @@ function LivePage() {
           ),
         );
 
-        const songResults = await Promise.all(
-          uniqueSongIds.map(async (id) => {
-            try {
-              const res = await api.getSong(id);
-              return normalizeSong(res.song);
-            } catch {
-              return null;
-            }
-          }),
-        );
+        if (!uniqueSongIds.length) {
+          setSongsData([]);
+          return;
+        }
 
-        if (cancelled) return;
-        setSongsData(songResults.filter(Boolean) as ViewSong[]);
+        try {
+          const songsRes = await api.getSongsByIds(uniqueSongIds);
+          if (cancelled) return;
+          setSongsData((songsRes.songs || []).map(normalizeSong));
+        } catch {
+          const songResults = await Promise.all(
+            uniqueSongIds.map(async (id) => {
+              try {
+                const res = await api.getSong(id);
+                return normalizeSong(res.song);
+              } catch {
+                return null;
+              }
+            }),
+          );
+
+          if (cancelled) return;
+          setSongsData(songResults.filter(Boolean) as ViewSong[]);
+        }
       } catch (loadError: unknown) {
         if (cancelled) return;
         setError(getErrorMessage(loadError, "Failed to load stage data"));
@@ -173,7 +190,10 @@ function LivePage() {
       const dt = time - last;
       last = time;
       const element = scrollRef.current;
-      if (element) element.scrollTop += (dt / 1000) * speed * 24;
+      if (element) {
+        const max = Math.max(0, element.scrollHeight - element.clientHeight);
+        element.scrollTop = Math.min(max, element.scrollTop + (dt / 1000) * speed * 24);
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -192,6 +212,9 @@ function LivePage() {
       pending = true;
       requestAnimationFrame(() => {
         pending = false;
+        const now = performance.now();
+        if (now - lastScrollEmitAt.current < 33) return;
+        lastScrollEmitAt.current = now;
         const max = element.scrollHeight - element.clientHeight;
         const pct = max > 0 ? element.scrollTop / max : 0;
         sendScroll(element.scrollTop, pct);
@@ -202,22 +225,43 @@ function LivePage() {
   }, [activeIndex, connected, isScroller, sendScroll]);
 
   useEffect(() => {
+    remoteBaseScrollRef.current = liveState.scrollTop || 0;
+    remoteBaseTimeRef.current = liveState.updatedAt || Date.now();
+  }, [liveState.scrollTop, liveState.updatedAt]);
+
+  useEffect(() => {
     if (isScroller || !connected) return;
     const element = scrollRef.current;
     if (!element) return;
-    const max = element.scrollHeight - element.clientHeight;
-    const target = Math.round(max * (liveState.scrollPct || 0));
-    if (Math.abs(element.scrollTop - target) > 2) {
-      applyingRemoteScroll.current = true;
-      element.scrollTop = target;
-      requestAnimationFrame(() => {
-        applyingRemoteScroll.current = false;
-      });
-    }
-  }, [activeIndex, connected, isScroller, liveState.scrollPct]);
+
+    const step = () => {
+      const max = Math.max(0, element.scrollHeight - element.clientHeight);
+      const elapsed = liveState.playing
+        ? Math.max(0, Date.now() - remoteBaseTimeRef.current)
+        : 0;
+      const target = Math.min(max, remoteBaseScrollRef.current + (elapsed / 1000) * liveState.speed * 24);
+      const delta = target - element.scrollTop;
+
+      if (Math.abs(delta) > 0.5) {
+        applyingRemoteScroll.current = true;
+        element.scrollTop += Math.abs(delta) > 64 ? delta * 0.3 : delta * 0.18;
+        requestAnimationFrame(() => {
+          applyingRemoteScroll.current = false;
+        });
+      }
+
+      followerFrameRef.current = requestAnimationFrame(step);
+    };
+
+    followerFrameRef.current = requestAnimationFrame(step);
+    return () => {
+      if (followerFrameRef.current) cancelAnimationFrame(followerFrameRef.current);
+    };
+  }, [activeIndex, connected, isScroller, liveState.playing, liveState.speed]);
 
   const goIndex = (index: number) => {
     if (!isScroller) return;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
     if (connected) setIndex(index);
     local.setLiveIndex(index);
     setScrolling(false);
@@ -436,6 +480,10 @@ function LivePage() {
           {scrolling ? <Pause className="size-5" /> : <Play className="ml-0.5 size-5" />}
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-1">
+          <div className="hidden min-w-0 flex-1 sm:block">
+            <p className="truncate text-[10px] uppercase tracking-widest text-white/35">Previous</p>
+            <p className="truncate text-xs text-white/65">{prevSong?.title || "Start of set"}</p>
+          </div>
           <button
             onClick={() => changeSpeed(-0.05)}
             className="size-8 rounded-md bg-white/5 flex items-center justify-center hover:bg-white/10"
@@ -452,6 +500,10 @@ function LivePage() {
           >
             <Plus className="size-3.5" />
           </button>
+          <div className="hidden min-w-0 flex-1 text-right sm:block">
+            <p className="truncate text-[10px] uppercase tracking-widest text-white/35">Next</p>
+            <p className="truncate text-xs text-white/65">{nextSong?.title || "End of set"}</p>
+          </div>
         </div>
         <button
           onClick={() => goIndex(Math.min(items.length - 1, activeIndex + 1))}

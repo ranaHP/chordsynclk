@@ -6,6 +6,10 @@ import jwt from "jsonwebtoken";
  */
 const rooms = new Map();
 
+function markUpdated(room) {
+  room.updatedAt = Date.now();
+}
+
 function ensureRoom(eventId) {
   let r = rooms.get(eventId);
   if (!r) {
@@ -17,6 +21,7 @@ function ensureRoom(eventId) {
       speed: 1,
       scrollerId: null,
       viewers: new Map(),
+      updatedAt: Date.now(),
     };
     rooms.set(eventId, r);
   }
@@ -62,6 +67,7 @@ function snapshot(r) {
     playing: r.playing,
     speed: r.speed,
     scrollerId: r.scrollerId,
+    updatedAt: r.updatedAt,
   };
 }
 
@@ -109,6 +115,7 @@ export function attachSocket(io) {
       if (!currentEvent) return;
       const r = ensureRoom(currentEvent);
       r.scrollerId = socket.user.sub;
+      markUpdated(r);
       io.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
     });
 
@@ -117,6 +124,7 @@ export function attachSocket(io) {
       const r = ensureRoom(currentEvent);
       if (r.scrollerId !== socket.user.sub) return;
       fn(r, payload);
+      markUpdated(r);
       socket.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
     };
 

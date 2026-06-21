@@ -9,6 +9,7 @@ export interface LiveState {
   playing: boolean;
   speed: number;
   scrollerId: string | null;
+  updatedAt: number;
 }
 export interface LiveViewer {
   id: string;
@@ -44,6 +45,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     playing: false,
     speed: 1,
     scrollerId: null,
+    updatedAt: 0,
   });
   const [viewers, setViewers] = useState<LiveViewer[]>([]);
   const [joinEvent, setJoinEvent] = useState<LiveJoinEvent | null>(null);

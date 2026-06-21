@@ -45,6 +45,7 @@ type ArtistDetailResponse = { artist: ApiRecord; songs: ApiRecord[] };
 type SongListResponse = { songs: ApiRecord[]; total: number };
 type SongDetailResponse = { song: ApiRecord };
 type SongResponse = { song: ApiRecord };
+type SongBatchResponse = { songs: ApiRecord[] };
 type GroupListResponse = { groups: ApiRecord[] };
 type GroupDetailResponse = { group: ApiRecord; users: ApiRecord[]; events: ApiRecord[] };
 type GroupResponse = { group: ApiRecord };
@@ -78,6 +79,10 @@ export const api = {
   listSongs: (q = "", artistSlug = "", page = 1, limit = 24, filters: SongFilters = {}) =>
     request<SongListResponse>(
       `/api/songs?q=${encodeURIComponent(q)}&artistSlug=${encodeURIComponent(artistSlug)}&page=${page}&limit=${limit}&artistName=${encodeURIComponent(filters.artistName || "")}&key=${encodeURIComponent(filters.key || "")}&timeSignature=${encodeURIComponent(filters.timeSignature || "")}&source=${encodeURIComponent(filters.source || "")}`,
+    ),
+  getSongsByIds: (ids: string[]) =>
+    request<SongBatchResponse>(
+      `/api/songs/batch?ids=${encodeURIComponent(ids.filter(Boolean).join(","))}`,
     ),
   getSong: (songId: string) =>
     request<SongDetailResponse>(`/api/songs/${encodeURIComponent(songId)}`),
