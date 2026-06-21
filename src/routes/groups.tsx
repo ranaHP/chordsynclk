@@ -3,7 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { api, API_ENABLED } from "@/lib/api";
 import { getUser } from "@/lib/mock-data";
 import { useAuth, useData, USERS } from "@/lib/store";
-import { normalizeGroup, normalizeUser } from "@/lib/view-models";
+import { normalizeGroup } from "@/lib/view-models";
 import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 
@@ -38,10 +38,9 @@ function GroupsPage() {
       setLoading(true);
       setError("");
       try {
-        const [groupRes, userRes] = await Promise.all([api.listGroups(), api.listUsers("")]);
+        const groupRes = await api.listGroups();
         if (cancelled) return;
         setGroups((groupRes.groups || []).map(normalizeGroup));
-        setUsers((userRes.users || []).map(normalizeUser));
       } catch (error: unknown) {
         if (cancelled) return;
         setError(getErrorMessage(error, "Failed to load groups"));

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Field, Modal, inputCls } from "./groups";
 import { api, API_ENABLED } from "@/lib/api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { normalizeEvent, normalizeGroup, normalizeUser } from "@/lib/view-models";
 
 export const Route = createFileRoute("/groups/$groupId")({
@@ -55,6 +56,8 @@ function GroupDetail() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [candidatePage, setCandidatePage] = useState(1);
+  const [candidatePages, setCandidatePages] = useState(1);
   const [evOpen, setEvOpen] = useState(false);
   const [evForm, setEvForm] = useState({
     name: "",
@@ -64,6 +67,8 @@ function GroupDetail() {
     duration: 90,
   });
 
+  const debouncedSearch = useDebouncedValue(search, 250);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -72,13 +77,12 @@ function GroupDetail() {
       setLoading(true);
       setError("");
       try {
-        const [groupRes, userRes] = await Promise.all([api.getGroup(groupId), api.listUsers("")]);
+        const groupRes = await api.getGroup(groupId);
         if (cancelled) return;
         setGroup(normalizeGroup(groupRes.group));
         setGroupEvents((groupRes.events || []).map(normalizeEvent));
         const memberUsers = (groupRes.users || []).map(normalizeUser);
-        const allUsers = (userRes.users || []).map(normalizeUser);
-        const byId = new Map([...allUsers, ...memberUsers].map((entry) => [entry.id, entry]));
+        const byId = new Map(memberUsers.map((entry) => [entry.id, entry]));
         setUsers([...byId.values()]);
       } catch (loadError: unknown) {
         if (cancelled) return;
@@ -98,6 +102,37 @@ function GroupDetail() {
     };
   }, [groupId, localGroup, localEvents]);
 
+  useEffect(() => {
+    if (!addOpen || !API_ENABLED) return;
+    let cancelled = false;
+
+    async function loadCandidates() {
+      try {
+        const res = await api.listUsers(debouncedSearch, candidatePage, 12);
+        if (cancelled) return;
+        const remoteUsers = (res.users || []).map(normalizeUser);
+        setUsers((current) => {
+          const byId = new Map(current.map((entry) => [entry.id, entry]));
+          remoteUsers.forEach((entry) => byId.set(entry.id, entry));
+          return [...byId.values()];
+        });
+        setCandidatePages(res.pages || 1);
+        setCandidatePage(res.page || 1);
+      } catch {
+        if (cancelled) return;
+      }
+    }
+
+    loadCandidates();
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen, candidatePage, debouncedSearch]);
+
+  useEffect(() => {
+    setCandidatePage(1);
+  }, [debouncedSearch, addOpen]);
+
   const refreshGroup = async () => {
     if (!API_ENABLED) return;
     const res = await api.getGroup(groupId);
@@ -110,11 +145,11 @@ function GroupDetail() {
     return users.filter(
       (entry) =>
         !group.members.some((member: GroupMember) => member.userId === entry.id) &&
-        (!search ||
-          entry.name.toLowerCase().includes(search.toLowerCase()) ||
-          entry.handle.toLowerCase().includes(search.toLowerCase())),
+        (!debouncedSearch ||
+          entry.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          entry.handle.toLowerCase().includes(debouncedSearch.toLowerCase())),
     );
-  }, [group, search, users]);
+  }, [debouncedSearch, group, users]);
 
   const addMember = async (userId: string) => {
     if (!group) return;
@@ -448,6 +483,27 @@ function GroupDetail() {
               <p className="text-white/40 text-xs text-center py-6">No more performers to add.</p>
             )}
           </div>
+          {API_ENABLED && candidatePages > 1 && (
+            <div className="mt-3 flex items-center justify-between text-xs text-white/50">
+              <button
+                onClick={() => setCandidatePage((current) => Math.max(1, current - 1))}
+                disabled={candidatePage <= 1}
+                className="rounded-full border border-white/10 px-3 py-1.5 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span>
+                Page {candidatePage} of {candidatePages}
+              </span>
+              <button
+                onClick={() => setCandidatePage((current) => Math.min(candidatePages, current + 1))}
+                disabled={candidatePage >= candidatePages}
+                className="rounded-full border border-white/10 px-3 py-1.5 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </Modal>
       )}
 

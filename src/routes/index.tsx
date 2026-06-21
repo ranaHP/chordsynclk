@@ -36,11 +36,13 @@ function HomePage() {
     async function loadSongs() {
       if (!API_ENABLED) return;
       try {
-        const res = await api.listSongs("", "", 1, 24);
+        const [topRes, recentRes] = await Promise.all([
+          api.listSongs("", "", 1, 10, {}, { sort: "title" }),
+          api.listSongs("", "", 1, 10, {}, { sort: "recent" }),
+        ]);
         if (cancelled) return;
-        const normalized = (res.songs || []).map(normalizeSong);
-        setTopSongs(normalized.slice(0, 10));
-        setRecentSongs(normalized.slice(0, 10));
+        setTopSongs((topRes.songs || []).map(normalizeSong));
+        setRecentSongs((recentRes.songs || []).map(normalizeSong));
       } catch {
         if (cancelled) return;
         setTopSongs([]);

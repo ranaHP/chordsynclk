@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { PaginationBar } from "@/components/PaginationBar";
 import { api } from "@/lib/api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { normalizeSong } from "@/lib/view-models";
 import { useEffect, useState } from "react";
 import { Plus, Search } from "lucide-react";
@@ -13,18 +15,33 @@ type ViewSong = ReturnType<typeof normalizeSong>;
 function AdminSongs() {
   const [q, setQ] = useState("");
   const [songs, setSongs] = useState<ViewSong[]>([]);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const debouncedQ = useDebouncedValue(q, 250);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
       try {
-        const res = await api.listSongs(q, "", 1, 500);
+        const res = await api.listSongs(debouncedQ, "", page, 25, {}, { sort: "title" });
         if (cancelled) return;
         setSongs((res.songs || []).map(normalizeSong));
+        setPage(res.page || 1);
+        setPages(res.pages || 1);
+        setTotal(res.total || 0);
       } catch {
         if (cancelled) return;
         setSongs([]);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -32,14 +49,16 @@ function AdminSongs() {
     return () => {
       cancelled = true;
     };
-  }, [q]);
+  }, [debouncedQ, page]);
 
   return (
     <div className="p-4 sm:p-8 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black">Songs</h1>
-          <p className="text-sm text-white/40">{songs.length} in library</p>
+          <p className="text-sm text-white/40">
+            {total} in library{loading ? " · Loading..." : ""}
+          </p>
         </div>
         <Link
           to="/admin/songs/new"
@@ -100,10 +119,19 @@ function AdminSongs() {
                   </td>
                 </tr>
               ))}
+              {!songs.length && !loading && (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-white/40">
+                    No songs found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <PaginationBar page={page} pages={pages} onPageChange={setPage} loading={loading} />
     </div>
   );
 }

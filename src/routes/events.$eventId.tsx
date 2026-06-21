@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { PaginationBar } from "@/components/PaginationBar";
 import { useData } from "@/lib/store";
 import type { Event, Playlist, PlaylistItem, SongPartName } from "@/lib/mock-data";
 import { Field, Modal, inputCls } from "./groups";
 import { useEffect, useMemo, useState } from "react";
 import { GripVertical, Plus, Radio, Trash2, X } from "lucide-react";
 import { api, API_ENABLED } from "@/lib/api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { normalizeEvent, normalizeSong } from "@/lib/view-models";
 
 export const Route = createFileRoute("/events/$eventId")({
@@ -27,6 +29,26 @@ const PART_OPTIONS: ("Full Song" | SongPartName | string)[] = [
   "Final Chorus",
   "Outro",
 ];
+const KEY_OPTIONS = [
+  "",
+  "A",
+  "Am",
+  "B",
+  "Bm",
+  "Bb",
+  "C",
+  "Cm",
+  "D",
+  "Dm",
+  "E",
+  "Em",
+  "F",
+  "Fm",
+  "G",
+  "Gm",
+];
+const BEAT_OPTIONS = ["", "4/4", "3/4", "6/8", "2/4"];
+const SOURCE_OPTIONS = ["", "chordslk"];
 
 type ViewEvent = ReturnType<typeof normalizeEvent>;
 type ViewSong = ReturnType<typeof normalizeSong>;
@@ -40,7 +62,8 @@ function EventPage() {
   const localEvent = local.events.find((e) => e.id === eventId);
 
   const [eventData, setEventData] = useState<EventState | null>(localEvent || null);
-  const [songsData, setSongsData] = useState<ViewSong[]>([]);
+  const [eventSongsData, setEventSongsData] = useState<ViewSong[]>([]);
+  const [librarySongs, setLibrarySongs] = useState<ViewSong[]>([]);
   const [loading, setLoading] = useState(API_ENABLED);
   const [error, setError] = useState("");
 
@@ -53,11 +76,15 @@ function EventPage() {
     key: "",
     beat: "",
     source: "",
-    year: "",
   });
+  const [songPage, setSongPage] = useState(1);
+  const [songPages, setSongPages] = useState(1);
+  const [songTotal, setSongTotal] = useState(0);
+  const [songLoading, setSongLoading] = useState(false);
   const [partChoice, setPartChoice] = useState<(typeof PART_OPTIONS)[number]>("Full Song");
   const [editingPlId, setEditingPlId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", description: "" });
+  const debouncedSongQ = useDebouncedValue(songQ, 250);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,13 +95,26 @@ function EventPage() {
       setError("");
 
       try {
-        const [eventRes, songsRes] = await Promise.all([
-          api.getEvent(eventId),
-          api.listSongs("", "", 1, 500),
-        ]);
+        const eventRes = await api.getEvent(eventId);
         if (cancelled) return;
-        setEventData(normalizeEvent(eventRes.event));
-        setSongsData((songsRes.songs || []).map(normalizeSong));
+        const normalizedEvent = normalizeEvent(eventRes.event);
+        setEventData(normalizedEvent);
+
+        const uniqueSongIds = Array.from(
+          new Set(
+            normalizedEvent.playlists.flatMap((playlist) =>
+              playlist.items.map((item) => String(item.songId)).filter(Boolean),
+            ),
+          ),
+        );
+        if (!uniqueSongIds.length) {
+          setEventSongsData([]);
+          return;
+        }
+
+        const songsRes = await api.getSongsByIds(uniqueSongIds);
+        if (cancelled) return;
+        setEventSongsData((songsRes.songs || []).map(normalizeSong));
       } catch (e: unknown) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load event data");
@@ -91,42 +131,69 @@ function EventPage() {
   }, [eventId, localEvent]);
 
   const ev = eventData;
-  const songMap = useMemo(() => new Map(songsData.map((s) => [s.id, s])), [songsData]);
-  const songOptions = useMemo(
-    () => ({
-      artists: Array.from(new Set(songsData.map((song) => song.artist))).sort((a, b) =>
-        a.localeCompare(b),
-      ),
-      keys: Array.from(new Set(songsData.map((song) => song.key))).sort((a, b) =>
-        a.localeCompare(b),
-      ),
-      beats: Array.from(new Set(songsData.map((song) => song.beat))).sort((a, b) =>
-        a.localeCompare(b),
-      ),
-      sources: Array.from(new Set(songsData.map((song) => song.tags[0] || "")))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b)),
-      years: Array.from(new Set(songsData.map((song) => String(song.year)))).sort((a, b) =>
-        a.localeCompare(b),
-      ),
-    }),
-    [songsData],
+  const songMap = useMemo(
+    () => new Map([...eventSongsData, ...librarySongs].map((s) => [s.id, s])),
+    [eventSongsData, librarySongs],
   );
 
-  const matchedSongs = songsData.filter((s) => {
-    const matchesQuery =
-      !songQ ||
-      s.title.toLowerCase().includes(songQ.toLowerCase()) ||
-      s.artist.toLowerCase().includes(songQ.toLowerCase());
-    const matchesArtist = !songFilters.artist || s.artist === songFilters.artist;
-    const matchesKey = !songFilters.key || s.key === songFilters.key;
-    const matchesBeat = !songFilters.beat || s.beat === songFilters.beat;
-    const matchesSource = !songFilters.source || (s.tags[0] || "") === songFilters.source;
-    const matchesYear = !songFilters.year || String(s.year) === songFilters.year;
-    return (
-      matchesQuery && matchesArtist && matchesKey && matchesBeat && matchesSource && matchesYear
-    );
-  });
+  useEffect(() => {
+    setSongPage(1);
+  }, [
+    addSongFor,
+    debouncedSongQ,
+    songFilters.artist,
+    songFilters.beat,
+    songFilters.key,
+    songFilters.source,
+  ]);
+
+  useEffect(() => {
+    if (!addSongFor || !API_ENABLED) return;
+    let cancelled = false;
+
+    async function loadSongPicker() {
+      setSongLoading(true);
+      try {
+        const res = await api.listSongs(
+          debouncedSongQ,
+          "",
+          songPage,
+          12,
+          {
+            artistName: songFilters.artist,
+            key: songFilters.key,
+            timeSignature: songFilters.beat,
+            source: songFilters.source,
+          },
+          { sort: "title", content: "summary" },
+        );
+        if (cancelled) return;
+        const normalized = (res.songs || []).map(normalizeSong);
+        setLibrarySongs(normalized);
+        setSongPage(res.page || 1);
+        setSongPages(res.pages || 1);
+        setSongTotal(res.total || 0);
+      } catch {
+        if (cancelled) return;
+        setLibrarySongs([]);
+      } finally {
+        if (!cancelled) setSongLoading(false);
+      }
+    }
+
+    loadSongPicker();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    addSongFor,
+    debouncedSongQ,
+    songFilters.artist,
+    songFilters.beat,
+    songFilters.key,
+    songFilters.source,
+    songPage,
+  ]);
 
   const apiEventId = ev?.id || eventId;
 
@@ -380,7 +447,12 @@ function EventPage() {
                 );
               })}
               <button
-                onClick={() => setAddSongFor(pl.id)}
+                onClick={() => {
+                  setSongQ("");
+                  setSongFilters({ artist: "", key: "", beat: "", source: "" });
+                  setSongPage(1);
+                  setAddSongFor(pl.id);
+                }}
                 className="w-full py-3 border border-dashed border-white/15 rounded-xl text-xs font-bold text-white/40 hover:text-amber-glow hover:border-amber-glow/40 transition-all"
               >
                 + Add song or part
@@ -439,27 +511,21 @@ function EventPage() {
             </select>
           </div>
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <select
+            <input
               value={songFilters.artist}
               onChange={(e) =>
                 setSongFilters((current) => ({ ...current, artist: e.target.value }))
               }
+              placeholder="Artist name"
               className={inputCls}
-            >
-              <option value="">Artist</option>
-              {songOptions.artists.map((artist) => (
-                <option key={artist} value={artist}>
-                  {artist}
-                </option>
-              ))}
-            </select>
+            />
             <select
               value={songFilters.key}
               onChange={(e) => setSongFilters((current) => ({ ...current, key: e.target.value }))}
               className={inputCls}
             >
               <option value="">Key</option>
-              {songOptions.keys.map((key) => (
+              {KEY_OPTIONS.filter(Boolean).map((key) => (
                 <option key={key} value={key}>
                   {key}
                 </option>
@@ -471,7 +537,7 @@ function EventPage() {
               className={inputCls}
             >
               <option value="">Beat</option>
-              {songOptions.beats.map((beat) => (
+              {BEAT_OPTIONS.filter(Boolean).map((beat) => (
                 <option key={beat} value={beat}>
                   {beat}
                 </option>
@@ -485,27 +551,16 @@ function EventPage() {
               className={inputCls}
             >
               <option value="">Source</option>
-              {songOptions.sources.map((source) => (
+              {SOURCE_OPTIONS.filter(Boolean).map((source) => (
                 <option key={source} value={source}>
                   {source}
                 </option>
               ))}
             </select>
-            <select
-              value={songFilters.year}
-              onChange={(e) => setSongFilters((current) => ({ ...current, year: e.target.value }))}
-              className={inputCls}
-            >
-              <option value="">Year</option>
-              {songOptions.years.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
           </div>
           <div className="max-h-80 overflow-y-auto space-y-1.5">
-            {matchedSongs.slice(0, 80).map((s) => (
+            {songLoading && <p className="py-3 text-xs text-white/50">Loading songs...</p>}
+            {librarySongs.map((s) => (
               <button
                 key={s.id}
                 onClick={() => addItem(addSongFor, s.id)}
@@ -521,7 +576,19 @@ function EventPage() {
                 <span className="text-[10px] font-bold text-amber-glow">ADD</span>
               </button>
             ))}
+            {!librarySongs.length && !songLoading && (
+              <p className="py-6 text-center text-xs text-white/40">No songs found.</p>
+            )}
           </div>
+          <div className="mt-3">
+            <PaginationBar
+              page={songPage}
+              pages={songPages}
+              onPageChange={setSongPage}
+              loading={songLoading}
+            />
+          </div>
+          <p className="mt-2 text-[10px] text-white/35">{songTotal} songs matched</p>
         </Modal>
       )}
     </AppShell>

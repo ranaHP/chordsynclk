@@ -38,11 +38,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 type ApiRecord = Record<string, unknown>;
+type PaginatedResponse<T extends string> = Record<T, ApiRecord[]> & {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+};
 type AuthResponse = { token: string; user: ApiRecord };
 type UserResponse = { user: ApiRecord };
-type ArtistListResponse = { artists: ApiRecord[]; total: number };
-type ArtistDetailResponse = { artist: ApiRecord; songs: ApiRecord[] };
-type SongListResponse = { songs: ApiRecord[]; total: number };
+type ArtistListResponse = PaginatedResponse<"artists">;
+type ArtistDetailResponse = {
+  artist: ApiRecord;
+  songs: ApiRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+};
+type SongListResponse = PaginatedResponse<"songs">;
 type SongDetailResponse = { song: ApiRecord };
 type SongResponse = { song: ApiRecord };
 type SongBatchResponse = { songs: ApiRecord[] };
@@ -51,12 +64,17 @@ type GroupDetailResponse = { group: ApiRecord; users: ApiRecord[]; events: ApiRe
 type GroupResponse = { group: ApiRecord };
 type EventListResponse = { events: ApiRecord[] };
 type EventResponse = { event: ApiRecord };
-type UserListResponse = { users: ApiRecord[] };
+type UserListResponse = PaginatedResponse<"users">;
 type SongFilters = {
   artistName?: string;
   key?: string;
   timeSignature?: string;
   source?: string;
+  genre?: string;
+};
+type SongListOptions = {
+  sort?: "title" | "artist" | "key" | "recent";
+  content?: "summary" | "full";
 };
 
 export const api = {
@@ -74,11 +92,20 @@ export const api = {
     request<ArtistListResponse>(
       `/api/artists?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}`,
     ),
-  getArtist: (slug: string) =>
-    request<ArtistDetailResponse>(`/api/artists/${encodeURIComponent(slug)}`),
-  listSongs: (q = "", artistSlug = "", page = 1, limit = 24, filters: SongFilters = {}) =>
+  getArtist: (slug: string, page = 1, limit = 24) =>
+    request<ArtistDetailResponse>(
+      `/api/artists/${encodeURIComponent(slug)}?page=${page}&limit=${limit}`,
+    ),
+  listSongs: (
+    q = "",
+    artistSlug = "",
+    page = 1,
+    limit = 24,
+    filters: SongFilters = {},
+    options: SongListOptions = {},
+  ) =>
     request<SongListResponse>(
-      `/api/songs?q=${encodeURIComponent(q)}&artistSlug=${encodeURIComponent(artistSlug)}&page=${page}&limit=${limit}&artistName=${encodeURIComponent(filters.artistName || "")}&key=${encodeURIComponent(filters.key || "")}&timeSignature=${encodeURIComponent(filters.timeSignature || "")}&source=${encodeURIComponent(filters.source || "")}`,
+      `/api/songs?q=${encodeURIComponent(q)}&artistSlug=${encodeURIComponent(artistSlug)}&page=${page}&limit=${limit}&artistName=${encodeURIComponent(filters.artistName || "")}&key=${encodeURIComponent(filters.key || "")}&timeSignature=${encodeURIComponent(filters.timeSignature || "")}&source=${encodeURIComponent(filters.source || "")}&genre=${encodeURIComponent(filters.genre || "")}&sort=${encodeURIComponent(options.sort || "title")}&content=${encodeURIComponent(options.content || "summary")}`,
     ),
   getSongsByIds: (ids: string[]) =>
     request<SongBatchResponse>(
@@ -147,5 +174,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ from, to }),
     }),
-  listUsers: (q = "") => request<UserListResponse>(`/api/users?q=${encodeURIComponent(q)}`),
+  listUsers: (q = "", page = 1, limit = 20) =>
+    request<UserListResponse>(`/api/users?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
 };

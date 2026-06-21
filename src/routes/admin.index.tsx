@@ -15,6 +15,7 @@ type ViewSong = ReturnType<typeof normalizeSong>;
 function AdminDashboard() {
   const { groups, events } = useData();
   const [songs, setSongs] = useState<ViewSong[]>([]);
+  const [songTotal, setSongTotal] = useState(0);
   const playlists = events.reduce((n, e) => n + e.playlists.length, 0);
 
   useEffect(() => {
@@ -24,9 +25,10 @@ function AdminDashboard() {
       if (!API_ENABLED) return;
 
       try {
-        const res = await api.listSongs("", "", 1, 6);
+        const res = await api.listSongs("", "", 1, 6, {}, { sort: "recent" });
         if (cancelled) return;
         setSongs((res.songs || []).map(normalizeSong));
+        setSongTotal(res.total || 0);
       } catch {
         if (cancelled) return;
         setSongs([]);
@@ -40,7 +42,7 @@ function AdminDashboard() {
   }, []);
 
   const stats = [
-    { label: "Songs", value: songs.length, icon: Music, color: "amber-glow" },
+    { label: "Songs", value: songTotal, icon: Music, color: "amber-glow" },
     { label: "Users", value: USERS.length, icon: Users, color: "neon-sync" },
     { label: "Groups", value: groups.length, icon: Users, color: "amber-glow" },
     { label: "Events", value: events.length, icon: Calendar, color: "neon-hot" },
