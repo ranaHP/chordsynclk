@@ -33,6 +33,15 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function isFullSongPartName(value?: string | null) {
+  if (!value) return true;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, " ");
+  return normalized === "full song" || normalized === "fullsong" || normalized === "song";
+}
+
 function LivePage() {
   const { eventId } = Route.useParams();
   const local = useData();
@@ -259,8 +268,10 @@ function LivePage() {
   }
 
   const partsToShow = song
-    ? current?.partName && current.partName !== "Full Song"
-      ? song.parts.filter((part) => part.name === current.partName)
+    ? current?.partName && !isFullSongPartName(current.partName)
+      ? song.parts.filter(
+          (part) => part.name.trim().toLowerCase() === current.partName?.trim().toLowerCase(),
+        )
       : song.parts
     : [];
 
@@ -381,7 +392,7 @@ function LivePage() {
             <>
               <div className="mb-8 animate-fade-in-up sm:mb-12" key={`${song.id}-${activeIndex}`}>
                 <p className="text-sm font-bold uppercase tracking-widest text-amber-glow">
-                  {current?.partName ?? "Full Song"}
+                  {isFullSongPartName(current?.partName) ? "Full Song" : current?.partName}
                 </p>
                 <h1 className="mt-2 text-5xl font-black leading-[0.95] sm:text-7xl md:text-8xl">
                   {song.title}

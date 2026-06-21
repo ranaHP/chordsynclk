@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { Router } from "express";
 import Song from "../models/Song.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
@@ -36,7 +37,11 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:songId", async (req, res, next) => {
   try {
-    const song = await Song.findOne({ songId: req.params.songId });
+    const songId = req.params.songId;
+    const filter = mongoose.Types.ObjectId.isValid(songId)
+      ? { $or: [{ songId }, { _id: songId }] }
+      : { songId };
+    const song = await Song.findOne(filter);
     if (!song) return res.status(404).json({ error: "Song not found" });
     res.json({ song });
   } catch (e) {
