@@ -23,6 +23,7 @@ export const Route = createFileRoute("/songs/$songId")({
 
 type ViewSong = ReturnType<typeof normalizeSong>;
 export type FontScale = "compact" | "comfortable" | "large";
+type ScrollMode = "continuous" | "step";
 
 const FONT_SCALE_CLASSES: Record<FontScale, { chord: string; lyric: string; gap: string }> = {
   compact: {
@@ -58,11 +59,16 @@ function SongPage() {
   const [error, setError] = useState("");
   const [scrolling, setScrolling] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [scrollMode, setScrollMode] = useState<ScrollMode>("continuous");
+  const [stepIntervalSeconds, setStepIntervalSeconds] = useState(5);
+  const [stepLineCount, setStepLineCount] = useState(2);
   const [transpose, setTranspose] = useState(0);
   const [fontScale, setFontScale] = useState<FontScale>("comfortable");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const readerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
+  const stepTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,35 +96,70 @@ function SongPage() {
   }, [songId]);
 
   useEffect(() => {
-    if (!scrolling) return;
+    if (!scrolling || scrollMode !== "continuous") return;
     let last = performance.now();
     const tick = (time: number) => {
       const dt = time - last;
       last = time;
       const element = scrollRef.current;
-      if (element) element.scrollTop += (dt / 1000) * speed * 24;
+      if (element) {
+        const max = Math.max(0, element.scrollHeight - element.clientHeight);
+        element.scrollTop = Math.min(max, element.scrollTop + (dt / 1000) * speed * 24);
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [scrolling, speed]);
+  }, [scrolling, scrollMode, speed]);
+
+  useEffect(() => {
+    if (!scrolling || scrollMode !== "step") return;
+    const element = scrollRef.current;
+    if (!element) return;
+
+    const step = () => {
+      const lines = Array.from(
+        element.querySelectorAll<HTMLElement>("[data-scroll-line='1']"),
+      ).filter((line) => line.offsetParent !== null);
+      if (!lines.length) return;
+
+      const targetIndex = Math.min(
+        lines.length - 1,
+        lines.findIndex((line) => line.offsetTop > element.scrollTop + 4) + Math.max(stepLineCount - 1, 0),
+      );
+      const fallbackIndex = Math.min(lines.length - 1, Math.max(stepLineCount - 1, 0));
+      const nextLine = lines[(targetIndex >= 0 ? targetIndex : fallbackIndex)] ?? null;
+      const max = Math.max(0, element.scrollHeight - element.clientHeight);
+      if (nextLine) {
+        element.scrollTo({
+          top: Math.min(max, Math.max(0, nextLine.offsetTop - 16)),
+          behavior: "smooth",
+        });
+      }
+    };
+
+    stepTimerRef.current = window.setInterval(step, Math.max(1, stepIntervalSeconds) * 1000);
+    return () => {
+      if (stepTimerRef.current) window.clearInterval(stepTimerRef.current);
+    };
+  }, [scrolling, scrollMode, stepIntervalSeconds, stepLineCount]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      setIsFullscreen(document.fullscreenElement === readerRef.current);
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
   const toggleFullscreen = async () => {
-    if (document.fullscreenElement) {
+    if (document.fullscreenElement === readerRef.current) {
       await document.exitFullscreen();
       return;
     }
-    await document.documentElement.requestFullscreen();
+    await readerRef.current?.requestFullscreen();
   };
 
   if (loading) {
@@ -152,7 +193,7 @@ function SongPage() {
           <ChevronLeft className="size-4" /> Back to browse
         </Link>
 
-        <header className="mb-6 grid gap-5 sm:grid-cols-[auto_1fr] items-end">
+        <header className={`mb-6 grid gap-5 sm:grid-cols-[auto_1fr] items-end ${isFullscreen ? "hidden" : ""}`}>
           <img
             src={song.cover}
             alt={song.title}
@@ -177,99 +218,163 @@ function SongPage() {
           </div>
         </header>
 
-        {error && <p className="mb-4 text-xs text-amber-glow">{error}</p>}
-        <p className="mb-6 text-sm text-white/60">{song.description}</p>
-
-        <div className="glass-card sticky top-16 z-40 mb-6 flex flex-wrap items-center gap-3 rounded-2xl p-3 sm:top-20 sm:p-4">
-          <button
-            onClick={() => setScrolling((current) => !current)}
-            className="glow-amber size-11 rounded-full bg-amber-glow text-stage-black flex items-center justify-center font-bold active:scale-95 transition-transform"
-            aria-label={scrolling ? "Pause" : "Play"}
-          >
-            {scrolling ? <Pause className="size-5" /> : <Play className="ml-0.5 size-5" />}
-          </button>
-
-          <div className="flex min-w-[180px] flex-1 items-center gap-2">
-            <button
-              onClick={() => setSpeed((current) => Math.max(0.1, +(current - 0.05).toFixed(2)))}
-              className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
-            >
-              <Minus className="size-3.5" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] uppercase tracking-widest text-white/40">
-                Auto-scroll speed
-              </p>
-              <p className="chord-text text-sm">{speed.toFixed(2)}x</p>
-            </div>
-            <button
-              onClick={() => setSpeed((current) => Math.min(8, +(current + 0.05).toFixed(2)))}
-              className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </div>
-
-          <div className="flex min-w-[170px] items-center gap-2">
-            <button
-              onClick={() => setTranspose((current) => Math.max(-6, current - 1))}
-              className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
-            >
-              <Minus className="size-3.5" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] uppercase tracking-widest text-white/40">Transpose</p>
-              <p className="chord-text text-sm">{transpose > 0 ? `+${transpose}` : transpose}</p>
-            </div>
-            <button
-              onClick={() => setTranspose((current) => Math.min(6, current + 1))}
-              className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
-            {(["compact", "comfortable", "large"] as FontScale[]).map((option) => (
-              <button
-                key={option}
-                onClick={() => setFontScale(option)}
-                className={`rounded-lg px-3 py-1.5 text-[11px] font-bold capitalize transition-colors ${
-                  fontScale === option
-                    ? "bg-amber-glow text-stage-black"
-                    : "text-white/60 hover:text-white"
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={toggleFullscreen}
-            className="hidden items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-white/70 hover:text-white sm:flex"
-          >
-            {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-            {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-          </button>
-        </div>
+        {!isFullscreen && error && <p className="mb-4 text-xs text-amber-glow">{error}</p>}
+        {!isFullscreen && <p className="mb-6 text-sm text-white/60">{song.description}</p>}
 
         <div
-          ref={scrollRef}
-          className="relative max-h-[82vh] overflow-y-auto rounded-3xl border border-white/5 bg-stage-card p-6 no-scrollbar sm:p-10"
+          ref={readerRef}
+          className={`rounded-3xl ${isFullscreen ? "bg-stage-black p-2 sm:p-4" : ""}`}
         >
-          <div className="absolute left-0 top-0 h-full w-1 rounded-full bg-amber-glow opacity-30" />
-          <div className="space-y-12">
-            {song.parts.map((part, index) => (
-              <SongPartBlock
-                key={`${part.name}-${index}`}
-                part={part}
-                highlight={part.name === "Chorus" || part.name === "Final Chorus"}
-                transpose={transpose}
-                fontScale={fontScale}
-              />
-            ))}
-            <div className="h-40" />
+          <div className={`glass-card sticky z-40 mb-6 flex flex-wrap items-center gap-3 rounded-2xl p-3 sm:p-4 ${isFullscreen ? "top-0" : "top-16 sm:top-20"}`}>
+            <button
+              onClick={() => setScrolling((current) => !current)}
+              className="glow-amber size-11 rounded-full bg-amber-glow text-stage-black flex items-center justify-center font-bold active:scale-95 transition-transform"
+              aria-label={scrolling ? "Pause" : "Play"}
+            >
+              {scrolling ? <Pause className="size-5" /> : <Play className="ml-0.5 size-5" />}
+            </button>
+
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
+              {(["continuous", "step"] as ScrollMode[]).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setScrollMode(option)}
+                  className={`rounded-lg px-3 py-1.5 text-[11px] font-bold capitalize transition-colors ${
+                    scrollMode === option
+                      ? "bg-amber-glow text-stage-black"
+                      : "text-white/60 hover:text-white"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+
+            {scrollMode === "continuous" ? (
+              <div className="flex min-w-[180px] flex-1 items-center gap-2">
+                <button
+                  onClick={() => setSpeed((current) => Math.max(0.1, +(current - 0.05).toFixed(2)))}
+                  className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+                >
+                  <Minus className="size-3.5" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] uppercase tracking-widest text-white/40">
+                    Auto-scroll speed
+                  </p>
+                  <p className="chord-text text-sm">{speed.toFixed(2)}x</p>
+                </div>
+                <button
+                  onClick={() => setSpeed((current) => Math.min(8, +(current + 0.05).toFixed(2)))}
+                  className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex min-w-[250px] flex-1 flex-wrap items-center gap-2">
+                <div className="flex min-w-[118px] items-center gap-2">
+                  <button
+                    onClick={() => setStepIntervalSeconds((current) => Math.max(1, current - 1))}
+                    className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+                  >
+                    <Minus className="size-3.5" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] uppercase tracking-widest text-white/40">Interval</p>
+                    <p className="chord-text text-sm">{stepIntervalSeconds}s</p>
+                  </div>
+                  <button
+                    onClick={() => setStepIntervalSeconds((current) => Math.min(60, current + 1))}
+                    className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                </div>
+                <div className="flex min-w-[118px] items-center gap-2">
+                  <button
+                    onClick={() => setStepLineCount((current) => Math.max(1, current - 1))}
+                    className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+                  >
+                    <Minus className="size-3.5" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] uppercase tracking-widest text-white/40">Lines</p>
+                    <p className="chord-text text-sm">{stepLineCount}</p>
+                  </div>
+                  <button
+                    onClick={() => setStepLineCount((current) => Math.min(12, current + 1))}
+                    className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex min-w-[170px] items-center gap-2">
+              <button
+                onClick={() => setTranspose((current) => Math.max(-6, current - 1))}
+                className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+              >
+                <Minus className="size-3.5" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-widest text-white/40">Transpose</p>
+                <p className="chord-text text-sm">{transpose > 0 ? `+${transpose}` : transpose}</p>
+              </div>
+              <button
+                onClick={() => setTranspose((current) => Math.min(6, current + 1))}
+                className="size-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10"
+              >
+                <Plus className="size-3.5" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
+              {(["compact", "comfortable", "large"] as FontScale[]).map((option) => (
+                <button
+                  key={option}
+                  onClick={() => setFontScale(option)}
+                  className={`rounded-lg px-3 py-1.5 text-[11px] font-bold capitalize transition-colors ${
+                    fontScale === option
+                      ? "bg-amber-glow text-stage-black"
+                      : "text-white/60 hover:text-white"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={toggleFullscreen}
+              className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-white/70 hover:text-white"
+            >
+              {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+              {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            </button>
+          </div>
+
+          <div
+            ref={scrollRef}
+            className={`relative overflow-y-auto rounded-3xl border border-white/5 bg-stage-card p-6 no-scrollbar sm:p-10 ${
+              isFullscreen ? "h-[calc(100vh-7rem)]" : "max-h-[82vh]"
+            }`}
+          >
+            <div className="absolute left-0 top-0 h-full w-1 rounded-full bg-amber-glow opacity-30" />
+            <div className="space-y-12">
+              {song.parts.map((part, index) => (
+                <SongPartBlock
+                  key={`${part.name}-${index}`}
+                  part={part}
+                  highlight={part.name === "Chorus" || part.name === "Final Chorus"}
+                  transpose={transpose}
+                  fontScale={fontScale}
+                />
+              ))}
+              <div className="h-40" />
+            </div>
           </div>
         </div>
       </div>
@@ -304,6 +409,9 @@ export function SongPartBlock({
 }) {
   const hasStructuredLines = Array.isArray(part.lines) && part.lines.length > 0;
   const fontClasses = FONT_SCALE_CLASSES[fontScale];
+  const fallbackChordLines = part.chords.split("\n");
+  const fallbackLyricLines = part.lyrics.split("\n");
+  const fallbackRowCount = Math.max(fallbackChordLines.length, fallbackLyricLines.length);
 
   return (
     <div
@@ -328,7 +436,7 @@ export function SongPartBlock({
             }
 
             return (
-              <div key={index}>
+              <div key={index} data-scroll-line="1">
                 {line.chordLine && (
                   <pre className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}>
                     {transposeChordLine(line.chordLine, transpose)}
@@ -352,16 +460,30 @@ export function SongPartBlock({
           })}
         </div>
       ) : (
-        <>
-          <pre className={`chord-text mb-3 whitespace-pre-wrap ${fontClasses.chord}`}>
-            {transposeChordLine(part.chords, transpose)}
-          </pre>
-          <pre
-            className={`whitespace-pre-wrap font-mono leading-[1.8] text-white/85 ${fontClasses.lyric}`}
-          >
-            {part.lyrics}
-          </pre>
-        </>
+        <div className={fontClasses.gap}>
+          {Array.from({ length: fallbackRowCount }).map((_, index) => {
+            const chordLine = fallbackChordLines[index] || "";
+            const lyricLine = fallbackLyricLines[index] || "";
+            if (!chordLine && !lyricLine) return <div key={index} className="h-5 sm:h-6" />;
+
+            return (
+              <div key={index} data-scroll-line="1">
+                {chordLine && (
+                  <pre className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}>
+                    {transposeChordLine(chordLine, transpose)}
+                  </pre>
+                )}
+                {lyricLine && (
+                  <pre
+                    className={`whitespace-pre-wrap font-mono leading-[1.8] text-white/85 ${fontClasses.lyric}`}
+                  >
+                    {lyricLine}
+                  </pre>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
