@@ -116,58 +116,11 @@ function LivePage() {
       setError("");
 
       try {
-        const eventRes = await api.getEvent(eventId);
+        const stageRes = await api.getStage(eventId);
         if (cancelled) return;
-        const normalizedEvent = normalizeEvent(eventRes.event);
+        const normalizedEvent = normalizeEvent(stageRes.event);
         setEventData(normalizedEvent);
-
-        const uniqueSongIds = Array.from(
-          new Set(
-            normalizedEvent.playlists.flatMap((playlist) =>
-              playlist.items.map((item) => String(item.songId)).filter(Boolean),
-            ),
-          ),
-        );
-
-        if (!uniqueSongIds.length) {
-          setSongsData([]);
-          return;
-        }
-
-        const prioritizedSongId =
-          uniqueSongIds[Math.min(activeIndex, Math.max(0, uniqueSongIds.length - 1))] ||
-          uniqueSongIds[0];
-
-        try {
-          const firstSongRes = await api.getSong(prioritizedSongId);
-          if (cancelled) return;
-          const firstSong = normalizeSong(firstSongRes.song);
-          setSongsData([firstSong]);
-          setLoading(false);
-        } catch {
-          // Keep loading the rest; batch may still resolve the correct song shape.
-        }
-
-        try {
-          const songsRes = await api.getSongsByIds(uniqueSongIds);
-          if (cancelled) return;
-          const normalizedSongs = (songsRes.songs || []).map(normalizeSong);
-          setSongsData(normalizedSongs);
-        } catch {
-          const songResults = await Promise.all(
-            uniqueSongIds.map(async (id) => {
-              try {
-                const res = await api.getSong(id);
-                return normalizeSong(res.song);
-              } catch {
-                return null;
-              }
-            }),
-          );
-
-          if (cancelled) return;
-          setSongsData(songResults.filter(Boolean) as ViewSong[]);
-        }
+        setSongsData((stageRes.songs || []).map(normalizeSong));
       } catch (loadError: unknown) {
         if (cancelled) return;
         setError(getErrorMessage(loadError, "Failed to load stage data"));
@@ -181,7 +134,7 @@ function LivePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeIndex, eventId, localEvent]);
+  }, [eventId, localEvent]);
 
   useEffect(() => {
     if (!connected) return;

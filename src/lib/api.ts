@@ -64,6 +64,7 @@ type GroupDetailResponse = { group: ApiRecord; users: ApiRecord[]; events: ApiRe
 type GroupResponse = { group: ApiRecord };
 type EventListResponse = { events: ApiRecord[] };
 type EventResponse = { event: ApiRecord };
+type StageResponse = { event: ApiRecord; songs: ApiRecord[]; state: ApiRecord | null };
 type UserListResponse = PaginatedResponse<"users">;
 type SongFilters = {
   artistName?: string;
@@ -148,6 +149,7 @@ export const api = {
   createEvent: (body: ApiRecord) =>
     request<EventResponse>(`/api/events`, { method: "POST", body: JSON.stringify(body) }),
   getEvent: (id: string) => request<EventResponse>(`/api/events/${encodeURIComponent(id)}`),
+  getStage: (id: string) => request<StageResponse>(`/api/live/${encodeURIComponent(id)}/stage`),
   updatePlaylist: (id: string, plId: string, body: ApiRecord) =>
     request<EventResponse>(`/api/events/${id}/playlists/${plId}`, {
       method: "PATCH",
