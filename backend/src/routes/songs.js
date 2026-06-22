@@ -52,7 +52,7 @@ router.get("/", async (req, res, next) => {
     const genre = (req.query.genre || "").toString().trim();
     const year = (req.query.year || "").toString().trim();
     const sort = (req.query.sort || "title").toString().trim();
-    const content = (req.query.content || "summary").toString().trim();
+    const content = (req.query.content || "full").toString().trim();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 24));
 
