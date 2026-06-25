@@ -1,7 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { PaginationBar } from "@/components/PaginationBar";
-import { SongTile } from "@/components/SongTile";
 import { api, API_ENABLED } from "@/lib/api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { normalizeSong } from "@/lib/view-models";
@@ -180,14 +179,62 @@ function SearchPage() {
           {total} song{total === 1 ? "" : "s"}
         </p>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="space-y-3">
           {songs.map((song) => (
-            <div key={song.id} className="w-full">
-              <SongTile song={song} />
-            </div>
+            <Link
+              key={song.id}
+              to="/song/$songId"
+              params={{ songId: song.id }}
+              className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-stage-card/70 p-3 transition-all hover:border-amber-glow/30 hover:bg-white/[0.04] sm:flex-row sm:items-center"
+            >
+              <img
+                src={song.cover}
+                alt={song.title}
+                className="h-24 w-full rounded-xl object-cover sm:size-20 sm:shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-lg font-black">{song.title}</p>
+                    <p className="truncate text-sm text-white/55">{song.artist}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[11px] text-white/45">
+                    {song.key ? (
+                      <span className="rounded-full border border-white/10 px-2 py-1">
+                        Key {song.key}
+                      </span>
+                    ) : null}
+                    {song.tempo ? (
+                      <span className="rounded-full border border-white/10 px-2 py-1">
+                        {song.tempo} BPM
+                      </span>
+                    ) : null}
+                    {song.timeSignature ? (
+                      <span className="rounded-full border border-white/10 px-2 py-1">
+                        {song.timeSignature}
+                      </span>
+                    ) : null}
+                    {song.source ? (
+                      <span className="rounded-full border border-white/10 px-2 py-1 uppercase">
+                        {song.source}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                {!!song.tags?.length && (
+                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-white/40">
+                    {song.tags.slice(0, 4).map((tag) => (
+                      <span key={tag} className="rounded-full bg-white/5 px-2 py-1">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Link>
           ))}
           {!songs.length && !loading && (
-            <div className="col-span-full py-16 text-center text-white/40">
+            <div className="py-16 text-center text-white/40">
               No songs match. Loosen your filters.
             </div>
           )}

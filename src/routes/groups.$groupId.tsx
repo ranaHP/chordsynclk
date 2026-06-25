@@ -66,6 +66,10 @@ function GroupDetail() {
     date: "",
     duration: 90,
   });
+  const [addingMemberId, setAddingMemberId] = useState<string | null>(null);
+  const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
 
   const debouncedSearch = useDebouncedValue(search, 250);
 
@@ -107,6 +111,7 @@ function GroupDetail() {
     let cancelled = false;
 
     async function loadCandidates() {
+      setCandidatesLoading(true);
       try {
         const res = await api.listUsers(debouncedSearch, candidatePage, 12);
         if (cancelled) return;
@@ -120,6 +125,8 @@ function GroupDetail() {
         setCandidatePage(res.page || 1);
       } catch {
         if (cancelled) return;
+      } finally {
+        if (!cancelled) setCandidatesLoading(false);
       }
     }
 
@@ -152,27 +159,43 @@ function GroupDetail() {
   }, [debouncedSearch, group, users]);
 
   const addMember = async (userId: string) => {
-    if (!group) return;
-    if (API_ENABLED) {
-      const res = await api.addMember(group.id, userId, "Member");
-      setGroup(normalizeGroup(res.group));
-    } else {
-      local.addGroupMember(group.id, userId);
+    if (!group || addingMemberId) return;
+    setAddingMemberId(userId);
+    try {
+      if (API_ENABLED) {
+        const res = await api.addMember(group.id, userId, "Member");
+        setGroup(normalizeGroup(res.group));
+      } else {
+        local.addGroupMember(group.id, userId);
+        setGroup(local.groups.find((groupEntry) => groupEntry.id === group.id) || group);
+      }
+    } catch (memberError: unknown) {
+      setError(getErrorMessage(memberError, "Failed to add member"));
+    } finally {
+      setAddingMemberId(null);
     }
   };
 
   const changeRole = async (userId: string, role: "Member" | "Scroller") => {
-    if (!group) return;
-    if (API_ENABLED) {
-      const res = await api.setMemberRole(group.id, userId, role);
-      setGroup(normalizeGroup(res.group));
-    } else {
-      local.setMemberRole(group.id, userId, role);
+    if (!group || roleUpdatingId) return;
+    setRoleUpdatingId(userId);
+    try {
+      if (API_ENABLED) {
+        const res = await api.setMemberRole(group.id, userId, role);
+        setGroup(normalizeGroup(res.group));
+      } else {
+        local.setMemberRole(group.id, userId, role);
+        setGroup(local.groups.find((groupEntry) => groupEntry.id === group.id) || group);
+      }
+    } catch (roleError: unknown) {
+      setError(getErrorMessage(roleError, "Failed to update member role"));
+    } finally {
+      setRoleUpdatingId(null);
     }
   };
 
   const createEvent = async () => {
-    if (!group || !evForm.name || !evForm.date) return;
+    if (!group || !evForm.name || !evForm.date || creatingEvent) return;
     const body = {
       groupId: group.id,
       name: evForm.name,
@@ -183,16 +206,23 @@ function GroupDetail() {
       duration: evForm.duration,
     };
 
-    if (API_ENABLED) {
-      await api.createEvent(body);
-      await refreshGroup();
-    } else {
-      const event = local.createEvent(body);
-      setGroupEvents([event, ...groupEvents]);
-    }
+    setCreatingEvent(true);
+    try {
+      if (API_ENABLED) {
+        await api.createEvent(body);
+        await refreshGroup();
+      } else {
+        const event = local.createEvent(body);
+        setGroupEvents([event, ...groupEvents]);
+      }
 
-    setEvOpen(false);
-    setEvForm({ name: "", description: "", image: "", date: "", duration: 90 });
+      setEvOpen(false);
+      setEvForm({ name: "", description: "", image: "", date: "", duration: 90 });
+    } catch (createError: unknown) {
+      setError(getErrorMessage(createError, "Failed to create event"));
+    } finally {
+      setCreatingEvent(false);
+    }
   };
 
   if (loading) {
@@ -419,6 +449,7 @@ function GroupDetail() {
                       onChange={(e) =>
                         changeRole(member.userId, e.target.value as "Member" | "Scroller")
                       }
+                      disabled={roleUpdatingId === member.userId}
                       className="text-[10px] bg-white/5 border border-white/10 rounded-md px-1.5 py-1 font-bold uppercase tracking-wider"
                     >
                       <option value="Member">Member</option>
@@ -465,21 +496,27 @@ function GroupDetail() {
             className={inputCls + " mb-3"}
           />
           <div className="max-h-80 overflow-y-auto space-y-1.5">
+            {candidatesLoading && (
+              <p className="py-3 text-center text-xs text-white/50">Loading members...</p>
+            )}
             {candidates.map((entry) => (
               <button
                 key={entry.id}
                 onClick={() => addMember(entry.id)}
-                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-left"
+                disabled={addingMemberId === entry.id}
+                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-left disabled:opacity-60"
               >
                 <img src={entry.avatar} alt={entry.name} className="size-9 rounded-full" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate">{entry.name}</p>
                   <p className="text-[10px] text-white/40">{entry.handle}</p>
                 </div>
-                <span className="text-[10px] font-bold text-amber-glow">ADD</span>
+                <span className="text-[10px] font-bold text-amber-glow">
+                  {addingMemberId === entry.id ? "ADDING..." : "ADD"}
+                </span>
               </button>
             ))}
-            {!candidates.length && (
+            {!candidates.length && !candidatesLoading && (
               <p className="text-white/40 text-xs text-center py-6">No more performers to add.</p>
             )}
           </div>
@@ -526,7 +563,7 @@ function GroupDetail() {
                 className={`${inputCls} min-h-16 resize-y`}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Date & time">
                 <input
                   type="datetime-local"
@@ -556,9 +593,10 @@ function GroupDetail() {
             </Field>
             <button
               onClick={createEvent}
-              className="w-full py-3 rounded-xl bg-amber-glow text-stage-black font-bold"
+              disabled={!evForm.name || !evForm.date || creatingEvent}
+              className="w-full py-3 rounded-xl bg-amber-glow text-stage-black font-bold disabled:opacity-50"
             >
-              Create event
+              {creatingEvent ? "Creating event..." : "Create event"}
             </button>
           </div>
         </Modal>

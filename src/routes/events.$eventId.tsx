@@ -84,6 +84,8 @@ function EventPage() {
   const [partChoice, setPartChoice] = useState<(typeof PART_OPTIONS)[number]>("Full Song");
   const [editingPlId, setEditingPlId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", description: "" });
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<{ playlistId: string; itemId: string } | null>(null);
   const debouncedSongQ = useDebouncedValue(songQ, 250);
 
   useEffect(() => {
@@ -198,79 +200,120 @@ function EventPage() {
   const apiEventId = ev?.id || eventId;
 
   const addPlaylist = async () => {
-    if (!plForm.name || !ev) return;
+    if (!plForm.name || !ev || actionKey) return;
+    setActionKey("playlist:create");
+    try {
+      if (API_ENABLED) {
+        const res = await api.addPlaylist(apiEventId, plForm.name, plForm.description);
+        setEventData(normalizeEvent(res.event));
+      } else {
+        local.addPlaylist(ev.id, plForm.name, plForm.description);
+        setEventData(local.events.find((e) => e.id === ev.id) || null);
+      }
 
-    if (API_ENABLED) {
-      const res = await api.addPlaylist(apiEventId, plForm.name, plForm.description);
-      setEventData(normalizeEvent(res.event));
-    } else {
-      local.addPlaylist(ev.id, plForm.name, plForm.description);
-      setEventData(local.events.find((e) => e.id === ev.id) || null);
+      setPlForm({ name: "", description: "" });
+      setPlOpen(false);
+    } catch (playlistError: unknown) {
+      setError(playlistError instanceof Error ? playlistError.message : "Failed to create playlist");
+    } finally {
+      setActionKey(null);
     }
-
-    setPlForm({ name: "", description: "" });
-    setPlOpen(false);
   };
 
   const savePlaylist = async (plId: string) => {
-    if (!ev) return;
+    if (!ev || actionKey) return;
+    setActionKey(`playlist:save:${plId}`);
+    try {
+      if (API_ENABLED) {
+        const res = await api.updatePlaylist(apiEventId, plId, editForm);
+        setEventData(normalizeEvent(res.event));
+      } else {
+        local.updatePlaylist(ev.id, plId, editForm);
+        setEventData(local.events.find((e) => e.id === ev.id) || null);
+      }
 
-    if (API_ENABLED) {
-      const res = await api.updatePlaylist(apiEventId, plId, editForm);
-      setEventData(normalizeEvent(res.event));
-    } else {
-      local.updatePlaylist(ev.id, plId, editForm);
+      setEditingPlId(null);
+    } catch (playlistError: unknown) {
+      setError(playlistError instanceof Error ? playlistError.message : "Failed to update playlist");
+    } finally {
+      setActionKey(null);
     }
-
-    setEditingPlId(null);
   };
 
   const deletePlaylist = async (plId: string) => {
-    if (!ev) return;
-
-    if (API_ENABLED) {
-      const res = await api.deletePlaylist(apiEventId, plId);
-      setEventData(normalizeEvent(res.event));
-    } else {
-      local.deletePlaylist(ev.id, plId);
+    if (!ev || actionKey) return;
+    setActionKey(`playlist:delete:${plId}`);
+    try {
+      if (API_ENABLED) {
+        const res = await api.deletePlaylist(apiEventId, plId);
+        setEventData(normalizeEvent(res.event));
+      } else {
+        local.deletePlaylist(ev.id, plId);
+        setEventData(local.events.find((e) => e.id === ev.id) || null);
+      }
+    } catch (playlistError: unknown) {
+      setError(playlistError instanceof Error ? playlistError.message : "Failed to delete playlist");
+    } finally {
+      setActionKey(null);
     }
   };
 
   const addItem = async (plId: string, songId: string) => {
-    if (!ev) return;
+    if (!ev || actionKey) return;
+    setActionKey(`item:add:${plId}:${songId}`);
+    try {
+      if (API_ENABLED) {
+        const res = await api.addPlaylistItem(apiEventId, plId, songId, partChoice);
+        setEventData(normalizeEvent(res.event));
+      } else {
+        local.addPlaylistItem(ev.id, plId, {
+          songId,
+          partName: partChoice as PlaylistItem["partName"],
+        });
+        setEventData(local.events.find((e) => e.id === ev.id) || null);
+      }
 
-    if (API_ENABLED) {
-      const res = await api.addPlaylistItem(apiEventId, plId, songId, partChoice);
-      setEventData(normalizeEvent(res.event));
-    } else {
-      local.addPlaylistItem(ev.id, plId, {
-        songId,
-        partName: partChoice as PlaylistItem["partName"],
-      });
+      setAddSongFor(null);
+    } catch (playlistError: unknown) {
+      setError(playlistError instanceof Error ? playlistError.message : "Failed to add playlist item");
+    } finally {
+      setActionKey(null);
     }
-
-    setAddSongFor(null);
   };
 
   const removeItem = async (plId: string, itemId: string) => {
-    if (!ev) return;
-
-    if (API_ENABLED) {
-      const res = await api.removePlaylistItem(apiEventId, plId, itemId);
-      setEventData(normalizeEvent(res.event));
-    } else {
-      local.removePlaylistItem(ev.id, plId, itemId);
+    if (!ev || actionKey) return;
+    setActionKey(`item:remove:${itemId}`);
+    try {
+      if (API_ENABLED) {
+        const res = await api.removePlaylistItem(apiEventId, plId, itemId);
+        setEventData(normalizeEvent(res.event));
+      } else {
+        local.removePlaylistItem(ev.id, plId, itemId);
+        setEventData(local.events.find((e) => e.id === ev.id) || null);
+      }
+    } catch (playlistError: unknown) {
+      setError(playlistError instanceof Error ? playlistError.message : "Failed to remove playlist item");
+    } finally {
+      setActionKey(null);
     }
   };
 
   const moveItem = async (plId: string, from: number, to: number) => {
-    if (!ev) return;
-
-    if (API_ENABLED) {
-      const res = await api.reorderPlaylist(apiEventId, plId, from, to);
-      setEventData(normalizeEvent(res.event));
-    } else {
-      local.reorderPlaylist(ev.id, plId, from, to);
+    if (!ev || actionKey || from === to) return;
+    setActionKey(`item:move:${plId}`);
+    try {
+      if (API_ENABLED) {
+        const res = await api.reorderPlaylist(apiEventId, plId, from, to);
+        setEventData(normalizeEvent(res.event));
+      } else {
+        local.reorderPlaylist(ev.id, plId, from, to);
+        setEventData(local.events.find((e) => e.id === ev.id) || null);
+      }
+    } catch (playlistError: unknown) {
+      setError(playlistError instanceof Error ? playlistError.message : "Failed to reorder playlist");
+    } finally {
+      setActionKey(null);
     }
   };
 
@@ -356,9 +399,10 @@ function EventPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => savePlaylist(pl.id)}
+                        disabled={actionKey === `playlist:save:${pl.id}`}
                         className="px-3 py-1 rounded-md bg-amber-glow text-stage-black text-xs font-bold"
                       >
-                        Save
+                        {actionKey === `playlist:save:${pl.id}` ? "Saving..." : "Save"}
                       </button>
                       <button
                         onClick={() => setEditingPlId(null)}
@@ -387,6 +431,7 @@ function EventPage() {
                 </button>
                 <button
                   onClick={() => deletePlaylist(pl.id)}
+                  disabled={actionKey === `playlist:delete:${pl.id}`}
                   className="size-8 rounded-md hover:bg-destructive/20 hover:text-destructive flex items-center justify-center"
                 >
                   <Trash2 className="size-3.5" />
@@ -411,19 +456,38 @@ function EventPage() {
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/5 group"
+                    draggable={!actionKey}
+                    onDragStart={() => setDragState({ playlistId: pl.id, itemId: item.id })}
+                    onDragEnd={() => setDragState(null)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (!dragState || dragState.playlistId !== pl.id || dragState.itemId === item.id) {
+                        return;
+                      }
+                      const from = pl.items.findIndex((entry) => entry.id === dragState.itemId);
+                      const to = pl.items.findIndex((entry) => entry.id === item.id);
+                      if (from >= 0 && to >= 0) {
+                        void moveItem(pl.id, from, to);
+                      }
+                      setDragState(null);
+                    }}
+                    className={`flex items-center gap-3 p-2.5 rounded-xl border group transition-colors ${
+                      dragState?.itemId === item.id
+                        ? "bg-amber-glow/10 border-amber-glow/30"
+                        : "bg-white/5 border-white/5"
+                    }`}
                   >
                     <div className="flex flex-col">
                       <button
                         onClick={() => idx > 0 && moveItem(pl.id, idx, idx - 1)}
-                        disabled={idx === 0}
+                        disabled={idx === 0 || actionKey === `item:move:${pl.id}`}
                         className="text-white/30 hover:text-amber-glow disabled:opacity-20 text-xs"
                       >
                         ▲
                       </button>
                       <button
                         onClick={() => idx < pl.items.length - 1 && moveItem(pl.id, idx, idx + 1)}
-                        disabled={idx === pl.items.length - 1}
+                        disabled={idx === pl.items.length - 1 || actionKey === `item:move:${pl.id}`}
                         className="text-white/30 hover:text-amber-glow disabled:opacity-20 text-xs"
                       >
                         ▼
@@ -439,6 +503,7 @@ function EventPage() {
                     </div>
                     <button
                       onClick={() => removeItem(pl.id, item.id)}
+                      disabled={actionKey === `item:remove:${item.id}`}
                       className="size-8 rounded-md hover:bg-destructive/20 hover:text-destructive flex items-center justify-center"
                     >
                       <X className="size-3.5" />
@@ -453,10 +518,14 @@ function EventPage() {
                   setSongPage(1);
                   setAddSongFor(pl.id);
                 }}
-                className="w-full py-3 border border-dashed border-white/15 rounded-xl text-xs font-bold text-white/40 hover:text-amber-glow hover:border-amber-glow/40 transition-all"
+                disabled={Boolean(actionKey)}
+                className="w-full py-3 border border-dashed border-white/15 rounded-xl text-xs font-bold text-white/40 hover:text-amber-glow hover:border-amber-glow/40 transition-all disabled:opacity-50"
               >
                 + Add song or part
               </button>
+              <p className="text-[10px] text-white/35">
+                Drag and drop to reorder, or use the move buttons for exact placement.
+              </p>
             </div>
           </div>
         ))}
@@ -481,9 +550,10 @@ function EventPage() {
             </Field>
             <button
               onClick={addPlaylist}
-              className="w-full py-3 rounded-xl bg-amber-glow text-stage-black font-bold"
+              disabled={!plForm.name || actionKey === "playlist:create"}
+              className="w-full py-3 rounded-xl bg-amber-glow text-stage-black font-bold disabled:opacity-50"
             >
-              Create
+              {actionKey === "playlist:create" ? "Creating..." : "Create"}
             </button>
           </div>
         </Modal>
@@ -491,7 +561,7 @@ function EventPage() {
 
       {addSongFor && (
         <Modal title="Add song or section" onClose={() => setAddSongFor(null)}>
-          <div className="flex gap-2 mb-3">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row">
             <input
               value={songQ}
               onChange={(e) => setSongQ(e.target.value)}
@@ -510,7 +580,7 @@ function EventPage() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
             <input
               value={songFilters.artist}
               onChange={(e) =>
@@ -564,7 +634,8 @@ function EventPage() {
               <button
                 key={s.id}
                 onClick={() => addItem(addSongFor, s.id)}
-                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-left"
+                disabled={Boolean(actionKey)}
+                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-left disabled:opacity-60"
               >
                 <img src={s.cover} alt={s.title} className="size-10 rounded-md object-cover" />
                 <div className="flex-1 min-w-0">
@@ -573,7 +644,9 @@ function EventPage() {
                     {s.artist} • {s.key}
                   </p>
                 </div>
-                <span className="text-[10px] font-bold text-amber-glow">ADD</span>
+                <span className="text-[10px] font-bold text-amber-glow">
+                  {actionKey === `item:add:${addSongFor}:${s.id}` ? "ADDING..." : "ADD"}
+                </span>
               </button>
             ))}
             {!librarySongs.length && !songLoading && (

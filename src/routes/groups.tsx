@@ -29,6 +29,8 @@ function GroupsPage() {
   const [showJoin, setShowJoin] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", image: "" });
   const [inviteValue, setInviteValue] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [joiningGroup, setJoiningGroup] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +58,7 @@ function GroupsPage() {
   }, [user, local.groups]);
 
   const submit = async () => {
-    if (!form.name) return;
+    if (!form.name || creatingGroup) return;
     if (!user) {
       navigate({ to: "/auth" });
       return;
@@ -68,8 +70,9 @@ function GroupsPage() {
       image: form.image || `https://picsum.photos/seed/${encodeURIComponent(form.name)}/800/800`,
     };
 
-    if (API_ENABLED) {
-      try {
+    setCreatingGroup(true);
+    try {
+      if (API_ENABLED) {
         const res = await api.createGroup(payload);
         const createdGroup = normalizeGroup(res.group);
         setGroups((current) => [
@@ -81,27 +84,28 @@ function GroupsPage() {
         setShowCreate(false);
         navigate({ to: "/groups/$groupId", params: { groupId: createdGroup.id } });
         return;
-      } catch (error: unknown) {
-        setError(getErrorMessage(error, "Failed to create group"));
-        return;
+      } else {
+        const next = local.createGroup({ ...payload, creatorId: user.id });
+        setGroups((current) => [next, ...current.filter((group) => group.id !== next.id)]);
       }
-    } else {
-      const next = local.createGroup({ ...payload, creatorId: user.id });
-      setGroups((current) => [next, ...current.filter((group) => group.id !== next.id)]);
+      setForm({ name: "", description: "", image: "" });
+      setShowCreate(false);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, "Failed to create group"));
+    } finally {
+      setCreatingGroup(false);
     }
-
-    setForm({ name: "", description: "", image: "" });
-    setShowCreate(false);
   };
 
   const joinByInvite = async () => {
-    if (!inviteValue.trim()) return;
+    if (!inviteValue.trim() || joiningGroup) return;
     if (!user) {
       navigate({ to: "/auth" });
       return;
     }
     const inviteCode = inviteValue.trim().split("/").filter(Boolean).pop() || inviteValue.trim();
     try {
+      setJoiningGroup(true);
       const res = await api.joinGroup(inviteCode);
       const joinedGroup = normalizeGroup(res.group);
       setGroups((current) => [
@@ -113,6 +117,8 @@ function GroupsPage() {
       navigate({ to: "/groups/$groupId", params: { groupId: joinedGroup.id } });
     } catch (joinError: unknown) {
       setError(getErrorMessage(joinError, "Failed to join group"));
+    } finally {
+      setJoiningGroup(false);
     }
   };
 
@@ -123,23 +129,25 @@ function GroupsPage() {
   return (
     <AppShell>
       <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10 space-y-6">
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-3xl sm:text-4xl font-black">Jam Groups</h1>
             <p className="text-sm text-white/40">Rehearse, plan events, perform synced.</p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="px-4 py-2.5 rounded-full bg-amber-glow text-stage-black text-sm font-bold flex items-center gap-2 glow-amber hover:scale-105 transition-transform"
-          >
-            <Plus className="size-4" /> New group
-          </button>
-          <button
-            onClick={() => setShowJoin(true)}
-            className="px-4 py-2.5 rounded-full border border-white/15 text-sm font-bold"
-          >
-            Join by invite
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={() => setShowCreate(true)}
+              className="px-4 py-2.5 rounded-full bg-amber-glow text-stage-black text-sm font-bold flex items-center justify-center gap-2 glow-amber hover:scale-105 transition-transform"
+            >
+              <Plus className="size-4" /> New group
+            </button>
+            <button
+              onClick={() => setShowJoin(true)}
+              className="px-4 py-2.5 rounded-full border border-white/15 text-sm font-bold"
+            >
+              Join by invite
+            </button>
+          </div>
         </div>
 
         {error && <p className="text-xs text-amber-glow">{error}</p>}
@@ -215,10 +223,10 @@ function GroupsPage() {
             </Field>
             <button
               onClick={submit}
-              disabled={!form.name}
+              disabled={!form.name || creatingGroup}
               className="w-full py-3 rounded-xl bg-amber-glow text-stage-black font-bold disabled:opacity-50"
             >
-              Create group
+              {creatingGroup ? "Creating group..." : "Create group"}
             </button>
           </div>
         </Modal>
@@ -237,10 +245,10 @@ function GroupsPage() {
             </Field>
             <button
               onClick={joinByInvite}
-              disabled={!inviteValue.trim()}
+              disabled={!inviteValue.trim() || joiningGroup}
               className="w-full py-3 rounded-xl bg-amber-glow text-stage-black font-bold disabled:opacity-50"
             >
-              Join group
+              {joiningGroup ? "Joining group..." : "Join group"}
             </button>
           </div>
         </Modal>
