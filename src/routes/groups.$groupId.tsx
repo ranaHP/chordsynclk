@@ -253,7 +253,7 @@ function GroupDetail() {
           <img src={group.image} alt={group.name} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-stage-black via-stage-black/40 to-transparent" />
         </div>
-        <div className="max-w-6xl mx-auto px-4 -mt-20 sm:-mt-24 relative">
+        <div className="max-w-6xl mx-auto px-4 -mt-20 sm:-mt-24 relative ">
           <div className="glass-card rounded-3xl p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -314,16 +314,16 @@ function GroupDetail() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-8 grid lg:grid-cols-[1.15fr_0.85fr] gap-8">
-        <section className="space-y-4">
-          <div className="flex items-end justify-between gap-4">
+      <div className="max-w-6xl px-4 py-8 grid lg:grid-cols-[1.15fr_0.85fr] gap-8  ">
+        <section className="space-y-4 ">
+          <div className="flex items-end justify-between gap-4  ">
             <div>
               <h2 className="text-2xl font-black">Events</h2>
-              <p className="text-sm text-white/40">Create events and open stage mode from here.</p>
+              <p className="text-sm text-white/40">Open stage from here.</p>
             </div>
             <button
               onClick={() => setEvOpen(true)}
-              className="px-3 py-1.5 rounded-full bg-amber-glow text-stage-black text-xs font-bold flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-full bg-amber-glow text-stage-black text-xs font-bold flex items-center gap-1.5 mx-5"
             >
               <Plus className="size-3.5" /> New event
             </button>
@@ -337,7 +337,7 @@ function GroupDetail() {
 
           <div className="space-y-3">
             {groupEvents.map((event: ViewEvent) => (
-              <div key={event.id} className="glass-card rounded-2xl p-4 sm:p-5">
+              <div key={event.id} className="glass-card rounded-2xl p-4 sm:p-5  ">
                 <div className="flex gap-4">
                   <img
                     src={event.image}
@@ -411,7 +411,7 @@ function GroupDetail() {
             </div>
             <button
               onClick={() => setAddOpen(true)}
-              className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold"
+              className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-bold mx-auto"
             >
               Add
             </button>
@@ -461,7 +461,7 @@ function GroupDetail() {
             })}
           </div>
 
-          <div className="glass-card rounded-2xl p-4">
+          <div className="glass-card rounded-2xl p-4 ">
             <div className="flex items-center gap-2 mb-2">
               <UsersIcon className="size-4 text-amber-glow" />
               <p className="text-sm font-black">Group Summary</p>

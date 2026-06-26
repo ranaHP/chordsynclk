@@ -52,6 +52,14 @@ function buildSongLookup(songs: ViewSong[]) {
   return lookup;
 }
 
+function shouldUsePseudoFullscreen() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isIOSDevice = /iPhone|iPad|iPod/i.test(ua);
+  const isTouchMac = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+  return isIOSDevice || isTouchMac;
+}
+
 function LivePage() {
   const { eventId } = Route.useParams();
   const local = useData();
@@ -166,13 +174,47 @@ function LivePage() {
   }, []);
 
   useEffect(() => {
-    if (!isPseudoFullscreen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
+    if (!effectiveFullscreen) return;
+    const root = document.documentElement;
+    const body = document.body;
+    const previousBodyOverflow = body.style.overflow;
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
+    const previousRootOverscroll = root.style.overscrollBehavior;
+
+    const updateViewport = () => {
+      const viewport = window.visualViewport;
+      const height = Math.round(viewport?.height ?? window.innerHeight);
+      const width = Math.round(viewport?.width ?? window.innerWidth);
+      root.style.setProperty("--app-fullscreen-height", `${height}px`);
+      root.style.setProperty("--app-fullscreen-width", `${width}px`);
     };
-  }, [isPseudoFullscreen]);
+
+    body.style.overflow = "hidden";
+    root.style.overflow = "hidden";
+    body.style.overscrollBehavior = "none";
+    root.style.overscrollBehavior = "none";
+    updateViewport();
+    window.scrollTo(0, 0);
+
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
+    window.visualViewport?.addEventListener("resize", updateViewport);
+    window.visualViewport?.addEventListener("scroll", updateViewport);
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      root.style.overflow = previousRootOverflow;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+      root.style.overscrollBehavior = previousRootOverscroll;
+      root.style.removeProperty("--app-fullscreen-height");
+      root.style.removeProperty("--app-fullscreen-width");
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
+      window.visualViewport?.removeEventListener("resize", updateViewport);
+      window.visualViewport?.removeEventListener("scroll", updateViewport);
+    };
+  }, [effectiveFullscreen]);
 
   useEffect(() => {
     if (!scrolling || !isScroller) return;
@@ -291,6 +333,14 @@ function LivePage() {
       setIsPseudoFullscreen(false);
       return;
     }
+    if (isPseudoFullscreen) {
+      setIsPseudoFullscreen(false);
+      return;
+    }
+    if (shouldUsePseudoFullscreen()) {
+      setIsPseudoFullscreen(true);
+      return;
+    }
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -333,7 +383,17 @@ function LivePage() {
     "-";
 
   return (
-    <div className={`${effectiveFullscreen ? "fixed inset-0 z-[100]" : "fixed inset-0"} flex flex-col bg-stage-black text-white`}>
+    <div
+      className={`${effectiveFullscreen ? "fixed inset-0 z-[100] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" : "fixed inset-0"} flex flex-col bg-stage-black text-white`}
+      style={
+        effectiveFullscreen
+          ? {
+              width: "var(--app-fullscreen-width, 100vw)",
+              height: "var(--app-fullscreen-height, 100dvh)",
+            }
+          : undefined
+      }
+    >
       {celebration && <JoinCelebration name={celebration.name} />}
 
       <header className="shrink-0 border-b border-white/5 bg-stage-black/90 px-3 py-2.5 backdrop-blur-xl sm:px-6 flex items-center justify-between gap-3">

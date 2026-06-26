@@ -52,6 +52,14 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function shouldUsePseudoFullscreen() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isIOSDevice = /iPhone|iPad|iPod/i.test(ua);
+  const isTouchMac = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+  return isIOSDevice || isTouchMac;
+}
+
 function SongPage() {
   const { songId } = Route.useParams();
   const [song, setSong] = useState<ViewSong | null>(null);
@@ -158,18 +166,60 @@ function SongPage() {
   }, []);
 
   useEffect(() => {
-    if (!isPseudoFullscreen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
+    if (!effectiveFullscreen) return;
+    const root = document.documentElement;
+    const body = document.body;
+    const previousBodyOverflow = body.style.overflow;
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
+    const previousRootOverscroll = root.style.overscrollBehavior;
+
+    const updateViewport = () => {
+      const viewport = window.visualViewport;
+      const height = Math.round(viewport?.height ?? window.innerHeight);
+      const width = Math.round(viewport?.width ?? window.innerWidth);
+      root.style.setProperty("--app-fullscreen-height", `${height}px`);
+      root.style.setProperty("--app-fullscreen-width", `${width}px`);
     };
-  }, [isPseudoFullscreen]);
+
+    body.style.overflow = "hidden";
+    root.style.overflow = "hidden";
+    body.style.overscrollBehavior = "none";
+    root.style.overscrollBehavior = "none";
+    updateViewport();
+    window.scrollTo(0, 0);
+
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
+    window.visualViewport?.addEventListener("resize", updateViewport);
+    window.visualViewport?.addEventListener("scroll", updateViewport);
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      root.style.overflow = previousRootOverflow;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+      root.style.overscrollBehavior = previousRootOverscroll;
+      root.style.removeProperty("--app-fullscreen-height");
+      root.style.removeProperty("--app-fullscreen-width");
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
+      window.visualViewport?.removeEventListener("resize", updateViewport);
+      window.visualViewport?.removeEventListener("scroll", updateViewport);
+    };
+  }, [effectiveFullscreen]);
 
   const toggleFullscreen = async () => {
     if (document.fullscreenElement === readerRef.current) {
       await document.exitFullscreen();
       setIsPseudoFullscreen(false);
+      return;
+    }
+    if (isPseudoFullscreen) {
+      setIsPseudoFullscreen(false);
+      return;
+    }
+    if (shouldUsePseudoFullscreen()) {
+      setIsPseudoFullscreen(true);
       return;
     }
     try {
@@ -214,7 +264,7 @@ function SongPage() {
         </Link>
 
         <header
-          className={`mb-6 grid gap-5 sm:grid-cols-[auto_1fr] items-end ${isFullscreen ? "hidden" : ""}`}
+          className={`mb-6 grid gap-5 sm:grid-cols-[auto_1fr] items-end ${effectiveFullscreen ? "hidden" : ""}`}
         >
           <img
             src={song.cover}
@@ -240,12 +290,20 @@ function SongPage() {
           </div>
         </header>
 
-        {!isFullscreen && error && <p className="mb-4 text-xs text-amber-glow">{error}</p>}
-        {!isFullscreen && <p className="mb-6 text-sm text-white/60">{song.description}</p>}
+        {!effectiveFullscreen && error && <p className="mb-4 text-xs text-amber-glow">{error}</p>}
+        {!effectiveFullscreen && <p className="mb-6 text-sm text-white/60">{song.description}</p>}
 
         <div
           ref={readerRef}
-          className={`rounded-3xl ${effectiveFullscreen ? "fixed inset-0 z-[100] bg-stage-black p-2 sm:p-4" : ""}`}
+          className={`rounded-3xl ${effectiveFullscreen ? "fixed inset-0 z-[100] bg-stage-black p-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:p-4" : ""}`}
+          style={
+            effectiveFullscreen
+              ? {
+                  width: "var(--app-fullscreen-width, 100vw)",
+                  height: "var(--app-fullscreen-height, 100dvh)",
+                }
+              : undefined
+          }
         >
           <div
             className={`glass-card sticky z-40 mb-6 flex flex-wrap items-center gap-3 rounded-2xl p-3 sm:p-4 ${effectiveFullscreen ? "top-0" : "top-16 sm:top-20"}`}
@@ -387,8 +445,13 @@ function SongPage() {
           <div
             ref={scrollRef}
             className={`relative overflow-y-auto rounded-3xl border border-white/5 bg-stage-card p-6 no-scrollbar sm:p-10 ${
-              effectiveFullscreen ? "h-[calc(100vh-7rem)]" : "max-h-[82vh]"
+              effectiveFullscreen ? "" : "max-h-[82vh]"
             }`}
+            style={
+              effectiveFullscreen
+                ? { height: "calc(var(--app-fullscreen-height, 100dvh) - 7.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))" }
+                : undefined
+            }
           >
             <div className="absolute left-0 top-0 h-full w-1 rounded-full bg-amber-glow opacity-30" />
             <div className="space-y-12">

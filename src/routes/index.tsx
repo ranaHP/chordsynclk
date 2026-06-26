@@ -289,10 +289,10 @@ function HomePage() {
                     <Guitar className="size-5" /> Explore Songs
                   </Link>
                   <Link
-                    to="/search"
+                    to="/groups"
                     className="inline-flex items-center justify-center gap-3 rounded-[1.2rem] border border-white/25 bg-white/4 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-md transition-colors hover:border-amber-glow/40 hover:bg-white/8 sm:text-lg"
                   >
-                    <Star className="size-5 text-amber-glow" /> Popular Chords
+                    <Star className="size-5 text-amber-glow" /> Your Groups
                   </Link>
                 </div>
               </div>
