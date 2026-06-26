@@ -113,15 +113,15 @@ function HomePage() {
           }
         >
           {topSongs.map((song) => (
-            <div key={song.id} className="snap-start">
-              <SongTile song={song} />
+            <div key={song.id} className="snap-center">
+              <SongTile song={song} size="lg" />
             </div>
           ))}
         </Shelf>
 
         <Shelf title="Recently Added" subtitle="Fresh chord sheets, just transcribed">
           {recentSongs.map((song) => (
-            <div key={song.id} className="snap-start">
+            <div key={song.id} className="snap-center">
               <SongTile song={song} size="sm" />
             </div>
           ))}
