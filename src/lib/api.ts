@@ -46,6 +46,7 @@ type PaginatedResponse<T extends string> = Record<T, ApiRecord[]> & {
 };
 type AuthResponse = { token: string; user: ApiRecord };
 type UserResponse = { user: ApiRecord };
+type OkResponse = { ok: true; message?: string };
 type ArtistListResponse = PaginatedResponse<"artists">;
 type ArtistDetailResponse = {
   artist: ApiRecord;
@@ -84,6 +85,21 @@ export const api = {
     request<AuthResponse>("/api/auth/google", {
       method: "POST",
       body: JSON.stringify({ credential }),
+    }),
+  register: (body: { name: string; username: string; password: string; email?: string }) =>
+    request<AuthResponse>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  login: (identifier: string, password: string) =>
+    request<AuthResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier, password }),
+    }),
+  forgotPassword: (identifier: string, newPassword: string) =>
+    request<OkResponse>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ identifier, newPassword }),
     }),
   guest: () => request<AuthResponse>("/api/auth/guest", { method: "POST" }),
   me: () => request<UserResponse>("/api/auth/me"),

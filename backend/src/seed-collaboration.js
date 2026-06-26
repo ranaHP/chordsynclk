@@ -22,10 +22,10 @@ async function run() {
   await connectDB();
   console.log("Seeding ChordSync collaboration data...");
 
-  const owner = await ensureUser("admin@chordsync.live", "Leo Strat", "@leostrat", true);
-  const alex = await ensureUser("alex@chordsync.live", "Alex Rivers", "@arivers");
-  const maya = await ensureUser("maya@chordsync.live", "Maya Solano", "@mayasolano");
-  const jin = await ensureUser("jin@chordsync.live", "Jin Park", "@jinpark");
+  // const owner = await ensureUser("admin@chordsync.live", "Leo Strat", "@leostrat", true);
+  // const alex = await ensureUser("alex@chordsync.live", "Alex Rivers", "@arivers");
+  // const maya = await ensureUser("maya@chordsync.live", "Maya Solano", "@mayasolano");
+  // const jin = await ensureUser("jin@chordsync.live", "Jin Park", "@jinpark");
 
   const songs = await Song.find({}).sort({ updatedAt: -1 }).limit(4).lean();
   const fallbackSongIds = ["song-1", "song-2", "song-5", "song-7"];

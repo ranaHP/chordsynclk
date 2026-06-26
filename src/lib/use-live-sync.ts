@@ -6,6 +6,7 @@ export interface LiveState {
   index: number;
   scrollTop: number;
   scrollPct: number;
+  progressSpeed: number;
   playing: boolean;
   speed: number;
   scrollerId: string | null;
@@ -42,6 +43,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     index: 0,
     scrollTop: 0,
     scrollPct: 0,
+    progressSpeed: 0,
     playing: false,
     speed: 1,
     scrollerId: null,
@@ -88,7 +90,8 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     takeScroller: useCallback(() => emit("live:take-scroller"), [emit]),
     setIndex: useCallback((index: number) => emit("live:index", { index }), [emit]),
     sendScroll: useCallback(
-      (scrollTop: number, scrollPct: number) => emit("live:scroll", { scrollTop, scrollPct }),
+      (scrollTop: number, scrollPct: number, progressSpeed = 0) =>
+        emit("live:scroll", { scrollTop, scrollPct, progressSpeed }),
       [emit],
     ),
     setPlayback: useCallback(

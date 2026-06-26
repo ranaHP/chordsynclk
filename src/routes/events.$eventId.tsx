@@ -477,7 +477,23 @@ function EventPage() {
                         : "bg-white/5 border-white/5"
                     }`}
                   >
-                    <div className="flex flex-col">
+                    <div className="flex flex-col sm:hidden gap-1">
+                      <button
+                        onClick={() => idx > 0 && moveItem(pl.id, idx, idx - 1)}
+                        disabled={idx === 0 || actionKey === `item:move:${pl.id}`}
+                        className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-bold text-white/65 hover:text-amber-glow disabled:opacity-20"
+                      >
+                        Up
+                      </button>
+                      <button
+                        onClick={() => idx < pl.items.length - 1 && moveItem(pl.id, idx, idx + 1)}
+                        disabled={idx === pl.items.length - 1 || actionKey === `item:move:${pl.id}`}
+                        className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-bold text-white/65 hover:text-amber-glow disabled:opacity-20"
+                      >
+                        Down
+                      </button>
+                    </div>
+                    <div className="hidden flex-col sm:flex">
                       <button
                         onClick={() => idx > 0 && moveItem(pl.id, idx, idx - 1)}
                         disabled={idx === 0 || actionKey === `item:move:${pl.id}`}
@@ -493,7 +509,7 @@ function EventPage() {
                         ▼
                       </button>
                     </div>
-                    <GripVertical className="size-3.5 text-white/20" />
+                    <GripVertical className="hidden size-3.5 text-white/20 sm:block" />
                     <img src={s.cover} alt={s.title} className="size-10 rounded-md object-cover" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold truncate">{s.title}</p>
@@ -524,7 +540,7 @@ function EventPage() {
                 + Add song or part
               </button>
               <p className="text-[10px] text-white/35">
-                Drag and drop to reorder, or use the move buttons for exact placement.
+                Desktop supports drag and drop. On mobile, use the Up and Down buttons for reliable reordering.
               </p>
             </div>
           </div>

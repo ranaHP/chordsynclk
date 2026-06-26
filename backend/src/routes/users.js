@@ -15,7 +15,13 @@ router.get("/", requireAuth, async (req, res, next) => {
 
     const response = await remember(cacheKey, USER_CACHE_TTL_MS, ["users"], async () => {
       const filter = q
-        ? { $or: [{ name: new RegExp(q, "i") }, { email: new RegExp(q, "i") }] }
+        ? {
+            $or: [
+              { name: new RegExp(q, "i") },
+              { email: new RegExp(q, "i") },
+              { handle: new RegExp(q, "i") },
+            ],
+          }
         : {};
       const [users, total] = await Promise.all([
         User.find(filter)

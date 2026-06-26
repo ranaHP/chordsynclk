@@ -65,10 +65,12 @@ function SongPage() {
   const [transpose, setTranspose] = useState(0);
   const [fontScale, setFontScale] = useState<FontScale>("comfortable");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const readerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const stepTimerRef = useRef<number | null>(null);
+  const effectiveFullscreen = isFullscreen || isPseudoFullscreen;
 
   useEffect(() => {
     let cancelled = false;
@@ -155,12 +157,29 @@ function SongPage() {
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    if (!isPseudoFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isPseudoFullscreen]);
+
   const toggleFullscreen = async () => {
     if (document.fullscreenElement === readerRef.current) {
       await document.exitFullscreen();
+      setIsPseudoFullscreen(false);
       return;
     }
-    await readerRef.current?.requestFullscreen();
+    try {
+      await readerRef.current?.requestFullscreen();
+      setIsPseudoFullscreen(false);
+      return;
+    } catch {
+      /* iOS / unsupported browser fallback */
+    }
+    setIsPseudoFullscreen((current) => !current);
   };
 
   if (loading) {
@@ -226,10 +245,10 @@ function SongPage() {
 
         <div
           ref={readerRef}
-          className={`rounded-3xl ${isFullscreen ? "bg-stage-black p-2 sm:p-4" : ""}`}
+          className={`rounded-3xl ${effectiveFullscreen ? "fixed inset-0 z-[100] bg-stage-black p-2 sm:p-4" : ""}`}
         >
           <div
-            className={`glass-card sticky z-40 mb-6 flex flex-wrap items-center gap-3 rounded-2xl p-3 sm:p-4 ${isFullscreen ? "top-0" : "top-16 sm:top-20"}`}
+            className={`glass-card sticky z-40 mb-6 flex flex-wrap items-center gap-3 rounded-2xl p-3 sm:p-4 ${effectiveFullscreen ? "top-0" : "top-16 sm:top-20"}`}
           >
             <button
               onClick={() => setScrolling((current) => !current)}
@@ -356,19 +375,19 @@ function SongPage() {
               onClick={toggleFullscreen}
               className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-white/70 hover:text-white"
             >
-              {isFullscreen ? (
+              {effectiveFullscreen ? (
                 <Minimize2 className="size-3.5" />
               ) : (
                 <Maximize2 className="size-3.5" />
               )}
-              {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+              {effectiveFullscreen ? "Exit fullscreen" : "Fullscreen"}
             </button>
           </div>
 
           <div
             ref={scrollRef}
             className={`relative overflow-y-auto rounded-3xl border border-white/5 bg-stage-card p-6 no-scrollbar sm:p-10 ${
-              isFullscreen ? "h-[calc(100vh-7rem)]" : "max-h-[82vh]"
+              effectiveFullscreen ? "h-[calc(100vh-7rem)]" : "max-h-[82vh]"
             }`}
           >
             <div className="absolute left-0 top-0 h-full w-1 rounded-full bg-amber-glow opacity-30" />
@@ -405,6 +424,7 @@ export function SongPartBlock({
   highlight,
   transpose = 0,
   fontScale = "comfortable",
+  fontSizeMultiplier = 1,
 }: {
   part: {
     name: string;
@@ -415,6 +435,7 @@ export function SongPartBlock({
   highlight?: boolean;
   transpose?: number;
   fontScale?: FontScale;
+  fontSizeMultiplier?: number;
 }) {
   const hasStructuredLines = Array.isArray(part.lines) && part.lines.length > 0;
   const fontClasses = FONT_SCALE_CLASSES[fontScale];
@@ -447,18 +468,25 @@ export function SongPartBlock({
             return (
               <div key={index} data-scroll-line="1">
                 {line.chordLine && (
-                  <pre className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}>
+                  <pre
+                    className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}
+                    style={{ fontSize: `${fontSizeMultiplier}em` }}
+                  >
                     {transposeChordLine(line.chordLine, transpose)}
                   </pre>
                 )}
                 {line.lyricLine && looksLikeChordRow(line.lyricLine) ? (
-                  <pre className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}>
+                  <pre
+                    className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}
+                    style={{ fontSize: `${fontSizeMultiplier}em` }}
+                  >
                     {transposeChordLine(line.lyricLine, transpose)}
                   </pre>
                 ) : (
                   line.lyricLine && (
                     <pre
                       className={`whitespace-pre-wrap font-mono leading-[1.8] text-white/85 ${fontClasses.lyric}`}
+                      style={{ fontSize: `${fontSizeMultiplier}em` }}
                     >
                       {line.lyricLine}
                     </pre>
@@ -478,13 +506,17 @@ export function SongPartBlock({
             return (
               <div key={index} data-scroll-line="1">
                 {chordLine && (
-                  <pre className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}>
+                  <pre
+                    className={`chord-text whitespace-pre-wrap ${fontClasses.chord}`}
+                    style={{ fontSize: `${fontSizeMultiplier}em` }}
+                  >
                     {transposeChordLine(chordLine, transpose)}
                   </pre>
                 )}
                 {lyricLine && (
                   <pre
                     className={`whitespace-pre-wrap font-mono leading-[1.8] text-white/85 ${fontClasses.lyric}`}
+                    style={{ fontSize: `${fontSizeMultiplier}em` }}
                   >
                     {lyricLine}
                   </pre>

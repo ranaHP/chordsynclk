@@ -69,6 +69,8 @@ function LivePage() {
   const [transpose, setTranspose] = useState(0);
   const [fontScale, setFontScale] = useState<FontScale>("large");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
+  const [fontSizeStep, setFontSizeStep] = useState(0);
   const [celebration, setCelebration] = useState<{ name: string; ts: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -76,7 +78,7 @@ function LivePage() {
   const applyingRemoteScroll = useRef(false);
   const followerFrameRef = useRef<number | null>(null);
   const lastScrollEmitAt = useRef(0);
-  const remoteBaseScrollRef = useRef(0);
+  const remoteBasePctRef = useRef(0);
   const remoteBaseTimeRef = useRef(0);
 
   const {
@@ -97,6 +99,8 @@ function LivePage() {
   const activeIndex = connected ? liveState.index : local.liveIndex;
   const activeScrollerId = connected ? remoteScrollerId : local.liveScrollerId;
   const isScroller = connected ? remoteScrollerId === user?.id : local.liveScrollerId === user?.id;
+  const effectiveFullscreen = isFullscreen || isPseudoFullscreen;
+  const fontSizeMultiplier = Math.max(0.72, Math.min(1.72, 1 + fontSizeStep * 0.08));
 
   const current = items[activeIndex];
   const song = current ? songMap.get(current.songId) : null;
@@ -162,6 +166,15 @@ function LivePage() {
   }, []);
 
   useEffect(() => {
+    if (!isPseudoFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isPseudoFullscreen]);
+
+  useEffect(() => {
     if (!scrolling || !isScroller) return;
     let last = performance.now();
     const tick = (time: number) => {
@@ -195,17 +208,18 @@ function LivePage() {
         lastScrollEmitAt.current = now;
         const max = element.scrollHeight - element.clientHeight;
         const pct = max > 0 ? element.scrollTop / max : 0;
-        sendScroll(element.scrollTop, pct);
+        const progressSpeed = scrolling && max > 0 ? (speed * 24) / max : 0;
+        sendScroll(element.scrollTop, pct, progressSpeed);
       });
     };
     element.addEventListener("scroll", onScroll, { passive: true });
     return () => element.removeEventListener("scroll", onScroll);
-  }, [activeIndex, connected, isScroller, sendScroll]);
+  }, [activeIndex, connected, isScroller, scrolling, sendScroll, speed]);
 
   useEffect(() => {
-    remoteBaseScrollRef.current = liveState.scrollTop || 0;
+    remoteBasePctRef.current = liveState.scrollPct || 0;
     remoteBaseTimeRef.current = liveState.updatedAt || Date.now();
-  }, [liveState.scrollTop, liveState.updatedAt]);
+  }, [liveState.scrollPct, liveState.updatedAt]);
 
   useEffect(() => {
     if (isScroller || !connected) return;
@@ -215,15 +229,16 @@ function LivePage() {
     const step = () => {
       const max = Math.max(0, element.scrollHeight - element.clientHeight);
       const elapsed = liveState.playing ? Math.max(0, Date.now() - remoteBaseTimeRef.current) : 0;
-      const target = Math.min(
-        max,
-        remoteBaseScrollRef.current + (elapsed / 1000) * liveState.speed * 24,
+      const targetPct = Math.max(
+        0,
+        Math.min(1, remoteBasePctRef.current + (elapsed / 1000) * (liveState.progressSpeed || 0)),
       );
+      const target = Math.min(max, targetPct * max);
       const delta = target - element.scrollTop;
 
       if (Math.abs(delta) > 0.5) {
         applyingRemoteScroll.current = true;
-        element.scrollTop += Math.abs(delta) > 64 ? delta * 0.3 : delta * 0.18;
+        element.scrollTop += Math.abs(delta) > 64 ? delta * 0.34 : delta * 0.2;
         requestAnimationFrame(() => {
           applyingRemoteScroll.current = false;
         });
@@ -236,7 +251,7 @@ function LivePage() {
     return () => {
       if (followerFrameRef.current) cancelAnimationFrame(followerFrameRef.current);
     };
-  }, [activeIndex, connected, isScroller, liveState.playing, liveState.speed]);
+  }, [activeIndex, connected, isScroller, liveState.playing, liveState.progressSpeed]);
 
   const goIndex = (index: number) => {
     if (!isScroller) return;
@@ -260,6 +275,10 @@ function LivePage() {
     if (connected && isScroller) setPlayback(scrolling, next);
   };
 
+  const changeFontSize = (delta: -1 | 1) => {
+    setFontSizeStep((current) => Math.max(-4, Math.min(9, current + delta)));
+  };
+
   const onTakeScroller = () => {
     if (!user) return;
     if (connected) takeScroller();
@@ -269,9 +288,19 @@ function LivePage() {
   const toggleFullscreen = async () => {
     if (document.fullscreenElement) {
       await document.exitFullscreen();
+      setIsPseudoFullscreen(false);
       return;
     }
-    await document.documentElement.requestFullscreen();
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+        setIsPseudoFullscreen(false);
+        return;
+      }
+    } catch {
+      /* iOS / unsupported browser fallback */
+    }
+    setIsPseudoFullscreen((current) => !current);
   };
 
   if (loading) {
@@ -304,7 +333,7 @@ function LivePage() {
     "-";
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-stage-black text-white">
+    <div className={`${effectiveFullscreen ? "fixed inset-0 z-[100]" : "fixed inset-0"} flex flex-col bg-stage-black text-white`}>
       {celebration && <JoinCelebration name={celebration.name} />}
 
       <header className="shrink-0 border-b border-white/5 bg-stage-black/90 px-3 py-2.5 backdrop-blur-xl sm:px-6 flex items-center justify-between gap-3">
@@ -342,7 +371,7 @@ function LivePage() {
           {!isScroller && user && (
             <button
               onClick={onTakeScroller}
-              className="hidden rounded-full border border-neon-sync/30 bg-neon-sync/15 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-neon-sync sm:block"
+              className="rounded-full border border-neon-sync/30 bg-neon-sync/15 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-neon-sync sm:px-3"
             >
               Take scroll
             </button>
@@ -358,27 +387,29 @@ function LivePage() {
             onClick={toggleFullscreen}
             className="size-9 rounded-lg flex items-center justify-center hover:bg-white/5"
           >
-            {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            {effectiveFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </button>
         </div>
       </header>
 
       <div className="border-b border-white/5 bg-stage-black/70 px-3 py-2 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
-            {(["compact", "comfortable", "large"] as FontScale[]).map((option) => (
-              <button
-                key={option}
-                onClick={() => setFontScale(option)}
-                className={`rounded-lg px-3 py-1.5 text-[11px] font-bold capitalize ${
-                  fontScale === option
-                    ? "bg-amber-glow text-stage-black"
-                    : "text-white/60 hover:text-white"
-                }`}
-              >
-                {option}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1">
+            <button
+              onClick={() => changeFontSize(-1)}
+              className="size-7 rounded-md flex items-center justify-center hover:bg-white/10"
+            >
+              <Minus className="size-3.5" />
+            </button>
+            <span className="min-w-20 text-center text-[11px] font-bold capitalize text-white/75">
+              Text {Math.round(fontSizeMultiplier * 100)}%
+            </span>
+            <button
+              onClick={() => changeFontSize(1)}
+              className="size-7 rounded-md flex items-center justify-center hover:bg-white/10"
+            >
+              <Plus className="size-3.5" />
+            </button>
           </div>
 
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1">
@@ -434,6 +465,7 @@ function LivePage() {
                     highlight={part.name === "Chorus" || part.name === "Final Chorus"}
                     transpose={transpose}
                     fontScale={fontScale}
+                    fontSizeMultiplier={fontSizeMultiplier}
                   />
                 ))}
               </div>

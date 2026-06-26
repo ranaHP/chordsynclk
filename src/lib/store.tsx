@@ -17,6 +17,7 @@ export interface AuthUser {
   name: string;
   email: string;
   avatar: string;
+  username?: string;
   isAdmin?: boolean;
 }
 
@@ -24,6 +25,14 @@ interface AuthCtx {
   user: AuthUser | null;
   loginGoogle: () => Promise<void>;
   loginGoogleWithCredential: (credential: string) => Promise<void>;
+  registerLocal: (input: {
+    name: string;
+    username: string;
+    password: string;
+    email?: string;
+  }) => Promise<void>;
+  loginLocal: (identifier: string, password: string) => Promise<void>;
+  forgotPassword: (identifier: string, newPassword: string) => Promise<void>;
   loginGuest: () => Promise<void>;
   logout: () => void;
 }
@@ -34,6 +43,7 @@ export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 type BackendAuthUser = {
   email?: string;
+  handle?: string;
   isAdmin?: boolean;
 } & Record<string, unknown>;
 
@@ -83,6 +93,8 @@ function toAuthUser(user: BackendAuthUser): AuthUser {
     name: base.name,
     email: user?.email || "",
     avatar: base.avatar,
+    username:
+      typeof user?.handle === "string" ? String(user.handle).replace(/^@/, "") : undefined,
     isAdmin: !!user?.isAdmin,
   };
 }
@@ -218,6 +230,103 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(toAuthUser(res.user as BackendAuthUser), res.token);
   };
 
+  const demoUsersKey = "csl_demo_users_v1";
+
+  const readDemoUsers = () => {
+    if (typeof window === "undefined") return [] as Array<Record<string, string>>;
+    try {
+      const raw = localStorage.getItem(demoUsersKey);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const writeDemoUsers = (users: Array<Record<string, string>>) => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(demoUsersKey, JSON.stringify(users));
+  };
+
+  const registerLocal = async ({
+    name,
+    username,
+    password,
+    email,
+  }: {
+    name: string;
+    username: string;
+    password: string;
+    email?: string;
+  }) => {
+    if (!API_ENABLED) {
+      const handle = username.replace(/^@+/, "").trim().toLowerCase();
+      const demoUsers = readDemoUsers();
+      if (demoUsers.some((entry) => entry.username === handle)) {
+        throw new Error("username already in use");
+      }
+      demoUsers.push({
+        id: `demo-${Date.now()}`,
+        name: name.trim(),
+        username: handle,
+        password,
+        email: email?.trim() || `${handle}@chordsync.demo`,
+      });
+      writeDemoUsers(demoUsers);
+      persist({
+        id: `demo-${Date.now()}`,
+        name: name.trim(),
+        username: handle,
+        email: email?.trim() || `${handle}@chordsync.demo`,
+        avatar: `https://i.pravatar.cc/200?u=${encodeURIComponent(handle)}`,
+      });
+      return;
+    }
+
+    const res = await api.register({ name, username, password, email });
+    persist(toAuthUser(res.user as BackendAuthUser), res.token);
+  };
+
+  const loginLocal = async (identifier: string, password: string) => {
+    if (!API_ENABLED) {
+      const key = identifier.trim().toLowerCase().replace(/^@+/, "");
+      const demoUser = readDemoUsers().find(
+        (entry) => entry.username === key || entry.email?.toLowerCase() === key,
+      );
+      if (!demoUser || demoUser.password !== password) {
+        throw new Error("invalid username or password");
+      }
+      persist({
+        id: demoUser.id,
+        name: demoUser.name,
+        username: demoUser.username,
+        email: demoUser.email,
+        avatar: `https://i.pravatar.cc/200?u=${encodeURIComponent(demoUser.username)}`,
+      });
+      return;
+    }
+
+    const res = await api.login(identifier, password);
+    persist(toAuthUser(res.user as BackendAuthUser), res.token);
+  };
+
+  const forgotPassword = async (identifier: string, newPassword: string) => {
+    if (!API_ENABLED) {
+      const key = identifier.trim().toLowerCase().replace(/^@+/, "");
+      const users = readDemoUsers();
+      const nextUsers = users.map((entry) =>
+        entry.username === key || entry.email?.toLowerCase() === key
+          ? { ...entry, password: newPassword }
+          : entry,
+      );
+      const changed = nextUsers.some((entry, idx) => entry.password !== users[idx]?.password);
+      if (!changed) throw new Error("account not found");
+      writeDemoUsers(nextUsers);
+      return;
+    }
+
+    await api.forgotPassword(identifier, newPassword);
+  };
+
   const loginGoogle = async () => {
     if (!API_ENABLED) {
       persist({
@@ -251,7 +360,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loginGoogle, loginGoogleWithCredential, loginGuest, logout }}
+      value={{
+        user,
+        loginGoogle,
+        loginGoogleWithCredential,
+        registerLocal,
+        loginLocal,
+        forgotPassword,
+        loginGuest,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>

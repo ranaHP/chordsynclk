@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 
 /**
  * In-memory live state per event room.
- * { [eventId]: { index, scrollTop, scrollPct, playing, speed, scrollerId, viewers: Map<socketId, user> } }
+ * { [eventId]: { index, scrollTop, scrollPct, progressSpeed, playing, speed, scrollerId, viewers: Map<socketId, user> } }
  */
 const rooms = new Map();
 
@@ -17,6 +17,7 @@ function ensureRoom(eventId) {
       index: 0,
       scrollTop: 0,
       scrollPct: 0,
+      progressSpeed: 0,
       playing: false,
       speed: 1,
       scrollerId: null,
@@ -35,6 +36,7 @@ export function getLiveState(eventId) {
     index: r.index,
     scrollTop: r.scrollTop,
     scrollPct: r.scrollPct,
+    progressSpeed: r.progressSpeed,
     playing: r.playing,
     speed: r.speed,
     scrollerId: r.scrollerId,
@@ -100,8 +102,7 @@ export function attachSocket(io) {
       });
       // Auto-assign first viewer as scroller
       if (!r.scrollerId) r.scrollerId = socket.user.sub;
-      socket.emit("live:state", snapshot(r));
-      socket.to(`event:${eventId}`).emit("live:state", snapshot(r));
+      io.to(`event:${eventId}`).emit("live:state", snapshot(r));
       emitViewerJoined(io, eventId, {
         id: socket.user.sub,
         name: socket.user.name,
@@ -125,7 +126,7 @@ export function attachSocket(io) {
       if (r.scrollerId !== socket.user.sub) return;
       fn(r, payload);
       markUpdated(r);
-      socket.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
+      io.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
     };
 
     socket.on(
@@ -134,15 +135,17 @@ export function attachSocket(io) {
         r.index = index;
         r.scrollTop = 0;
         r.scrollPct = 0;
+        r.progressSpeed = 0;
         r.playing = false;
       }),
     );
 
     socket.on(
       "live:scroll",
-      onlyScroller((r, { scrollTop = 0, scrollPct = 0 }) => {
+      onlyScroller((r, { scrollTop = 0, scrollPct = 0, progressSpeed = 0 }) => {
         r.scrollTop = scrollTop;
         r.scrollPct = scrollPct;
+        r.progressSpeed = progressSpeed;
       }),
     );
 
@@ -151,6 +154,7 @@ export function attachSocket(io) {
       onlyScroller((r, { playing, speed }) => {
         if (typeof playing === "boolean") r.playing = playing;
         if (typeof speed === "number") r.speed = speed;
+        if (!r.playing) r.progressSpeed = 0;
       }),
     );
 

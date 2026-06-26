@@ -197,125 +197,125 @@ export const SONGS: Song[] = titles.map(([title, artist], i) => {
 });
 
 export const USERS: MockUser[] = [
-  { id: "u1", name: "Leo Strat", handle: "@leostrat", avatar: AVT("leo"), bio: "Tele + tube amp + bad decisions." },
-  { id: "u2", name: "Alex Rivers", handle: "@arivers", avatar: AVT("alex"), bio: "Front-porch picker. Mostly G." },
-  { id: "u3", name: "Maya Solano", handle: "@mayasolano", avatar: AVT("maya"), bio: "Open mic regular. Capo addict." },
-  { id: "u4", name: "Jin Park", handle: "@jinpark", avatar: AVT("jin"), bio: "Math rock + matcha." },
-  { id: "u5", name: "Noor Hadid", handle: "@noor", avatar: AVT("noor"), bio: "Oud meets Strat." },
-  { id: "u6", name: "Sam Hollis", handle: "@samh", avatar: AVT("sam"), bio: "Bassist, but fine." },
-  { id: "u7", name: "Riley Cobb", handle: "@rileyc", avatar: AVT("riley"), bio: "Songs about trains." },
-  { id: "u8", name: "Esme Vale", handle: "@esme", avatar: AVT("esme"), bio: "Harmony singer / coffee drinker." },
-  { id: "u9", name: "Diego Marín", handle: "@diegom", avatar: AVT("diego"), bio: "Bolero by day, blues by night." },
-  { id: "u10", name: "Priya Anand", handle: "@priya", avatar: AVT("priya"), bio: "Loop pedals & loud chorus." },
-  { id: "u11", name: "Theo Burke", handle: "@theob", avatar: AVT("theo"), bio: "Stage manager. Future scroller." },
-  { id: "u12", name: "Wren Halloway", handle: "@wren", avatar: AVT("wren"), bio: "Songwriter in three keys." },
+  // { id: "u1", name: "Leo Strat", handle: "@leostrat", avatar: AVT("leo"), bio: "Tele + tube amp + bad decisions." },
+  // { id: "u2", name: "Alex Rivers", handle: "@arivers", avatar: AVT("alex"), bio: "Front-porch picker. Mostly G." },
+  // { id: "u3", name: "Maya Solano", handle: "@mayasolano", avatar: AVT("maya"), bio: "Open mic regular. Capo addict." },
+  // { id: "u4", name: "Jin Park", handle: "@jinpark", avatar: AVT("jin"), bio: "Math rock + matcha." },
+  // { id: "u5", name: "Noor Hadid", handle: "@noor", avatar: AVT("noor"), bio: "Oud meets Strat." },
+  // { id: "u6", name: "Sam Hollis", handle: "@samh", avatar: AVT("sam"), bio: "Bassist, but fine." },
+  // { id: "u7", name: "Riley Cobb", handle: "@rileyc", avatar: AVT("riley"), bio: "Songs about trains." },
+  // { id: "u8", name: "Esme Vale", handle: "@esme", avatar: AVT("esme"), bio: "Harmony singer / coffee drinker." },
+  // { id: "u9", name: "Diego Marín", handle: "@diegom", avatar: AVT("diego"), bio: "Bolero by day, blues by night." },
+  // { id: "u10", name: "Priya Anand", handle: "@priya", avatar: AVT("priya"), bio: "Loop pedals & loud chorus." },
+  // { id: "u11", name: "Theo Burke", handle: "@theob", avatar: AVT("theo"), bio: "Stage manager. Future scroller." },
+  // { id: "u12", name: "Wren Halloway", handle: "@wren", avatar: AVT("wren"), bio: "Songwriter in three keys." },
 ];
 
 export const GROUPS: Group[] = [
-  {
-    id: "6a36d7e2deeb3ec030ebd970",
-    name: "The Stratocasters",
-    description: "Weekly garage rehearsals. Beer, riffs, no metronome.",
-    image: PIC("stratocasters", 800),
-    members: [
-      { userId: "u1", role: "Scroller" },
-      { userId: "u2", role: "Member" },
-      { userId: "u6", role: "Member" },
-      { userId: "u11", role: "Member" },
-    ],
-    inviteLink: "chordsync.live/invite/strato-92x",
-  },
-  {
-    id: "g2",
-    name: "Sunday Acoustic Circle",
-    description: "Park-bench songs and slow tempos.",
-    image: PIC("acousticcircle", 800),
-    members: [
-      { userId: "u3", role: "Scroller" },
-      { userId: "u8", role: "Member" },
-      { userId: "u12", role: "Member" },
-    ],
-    inviteLink: "chordsync.live/invite/sundaycircle",
-  },
-  {
-    id: "g3",
-    name: "Neon Bar Band",
-    description: "Friday night classics. Loud, lit, ready.",
-    image: PIC("neonbar", 800),
-    members: [
-      { userId: "u4", role: "Scroller" },
-      { userId: "u5", role: "Member" },
-      { userId: "u10", role: "Member" },
-      { userId: "u9", role: "Member" },
-      { userId: "u7", role: "Member" },
-    ],
-    inviteLink: "chordsync.live/invite/neonbar",
-  },
+  // {
+  //   id: "6a36d7e2deeb3ec030ebd970",
+  //   name: "The Stratocasters",
+  //   description: "Weekly garage rehearsals. Beer, riffs, no metronome.",
+  //   image: PIC("stratocasters", 800),
+  //   members: [
+  //     { userId: "u1", role: "Scroller" },
+  //     { userId: "u2", role: "Member" },
+  //     { userId: "u6", role: "Member" },
+  //     { userId: "u11", role: "Member" },
+  //   ],
+  //   inviteLink: "chordsync.live/invite/strato-92x",
+  // },
+  // {
+  //   id: "g2",
+  //   name: "Sunday Acoustic Circle",
+  //   description: "Park-bench songs and slow tempos.",
+  //   image: PIC("acousticcircle", 800),
+  //   members: [
+  //     { userId: "u3", role: "Scroller" },
+  //     { userId: "u8", role: "Member" },
+  //     { userId: "u12", role: "Member" },
+  //   ],
+  //   inviteLink: "chordsync.live/invite/sundaycircle",
+  // },
+  // {
+  //   id: "g3",
+  //   name: "Neon Bar Band",
+  //   description: "Friday night classics. Loud, lit, ready.",
+  //   image: PIC("neonbar", 800),
+  //   members: [
+  //     { userId: "u4", role: "Scroller" },
+  //     { userId: "u5", role: "Member" },
+  //     { userId: "u10", role: "Member" },
+  //     { userId: "u9", role: "Member" },
+  //     { userId: "u7", role: "Member" },
+  //   ],
+  //   inviteLink: "chordsync.live/invite/neonbar",
+  // },
 ];
 
 const inFuture = (days: number) => new Date(Date.now() + days * 86400000).toISOString();
 
 export const EVENTS: Event[] = [
-  {
-    id: "e1",
-    groupId: "6a36d7e2deeb3ec030ebd970",
-    name: "Friday Jam Session",
-    description: "Three new covers + one original.",
-    image: PIC("fridayjam", 800),
-    date: inFuture(2),
-    duration: 90,
-    playlists: [
-      {
-        id: "pl1",
-        name: "Main Set",
-        description: "Rotate Scroller every 3 songs.",
-        items: [
-          { id: "i1", songId: "song-1", partName: "Full Song" },
-          { id: "i2", songId: "song-2", partName: "Full Song" },
-          { id: "i3", songId: "song-5", partName: "Chorus" },
-          { id: "i4", songId: "song-7", partName: "Full Song" },
-        ],
-      },
-      {
-        id: "pl2",
-        name: "Encore",
-        description: "If they're still standing.",
-        items: [
-          { id: "i5", songId: "song-9", partName: "Full Song" },
-        ],
-      },
-    ],
-  },
-  {
-    id: "e2",
-    groupId: "g2",
-    name: "Backyard Brunch Set",
-    description: "Acoustic-only. Capos welcome.",
-    image: PIC("brunch", 800),
-    date: inFuture(7),
-    duration: 60,
-    playlists: [
-      {
-        id: "pl3",
-        name: "Warm-up",
-        description: "Easy keys to start.",
-        items: [
-          { id: "i6", songId: "song-3", partName: "Full Song" },
-          { id: "i7", songId: "song-10", partName: "Full Song" },
-        ],
-      },
-    ],
-  },
-  {
-    id: "e3",
-    groupId: "g3",
-    name: "Neon Friday: Vol. 4",
-    description: "Bar gig at The Hollow.",
-    image: PIC("neonfriday", 800),
-    date: inFuture(14),
-    duration: 120,
-    playlists: [],
-  },
+  // {
+  //   id: "e1",
+  //   groupId: "6a36d7e2deeb3ec030ebd970",
+  //   name: "Friday Jam Session",
+  //   description: "Three new covers + one original.",
+  //   image: PIC("fridayjam", 800),
+  //   date: inFuture(2),
+  //   duration: 90,
+  //   playlists: [
+  //     {
+  //       id: "pl1",
+  //       name: "Main Set",
+  //       description: "Rotate Scroller every 3 songs.",
+  //       items: [
+  //         { id: "i1", songId: "song-1", partName: "Full Song" },
+  //         { id: "i2", songId: "song-2", partName: "Full Song" },
+  //         { id: "i3", songId: "song-5", partName: "Chorus" },
+  //         { id: "i4", songId: "song-7", partName: "Full Song" },
+  //       ],
+  //     },
+  //     {
+  //       id: "pl2",
+  //       name: "Encore",
+  //       description: "If they're still standing.",
+  //       items: [
+  //         { id: "i5", songId: "song-9", partName: "Full Song" },
+  //       ],
+  //     },
+  //   ],
+  // },
+  // {
+  //   id: "e2",
+  //   groupId: "g2",
+  //   name: "Backyard Brunch Set",
+  //   description: "Acoustic-only. Capos welcome.",
+  //   image: PIC("brunch", 800),
+  //   date: inFuture(7),
+  //   duration: 60,
+  //   playlists: [
+  //     {
+  //       id: "pl3",
+  //       name: "Warm-up",
+  //       description: "Easy keys to start.",
+  //       items: [
+  //         { id: "i6", songId: "song-3", partName: "Full Song" },
+  //         { id: "i7", songId: "song-10", partName: "Full Song" },
+  //       ],
+  //     },
+  //   ],
+  // },
+  // {
+  //   id: "e3",
+  //   groupId: "g3",
+  //   name: "Neon Friday: Vol. 4",
+  //   description: "Bar gig at The Hollow.",
+  //   image: PIC("neonfriday", 800),
+  //   date: inFuture(14),
+  //   duration: 120,
+  //   playlists: [],
+  // },
 ];
 
 export const COLLECTIONS = [
