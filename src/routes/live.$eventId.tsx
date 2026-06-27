@@ -4,7 +4,7 @@ import { transposeKeyLabel } from "@/lib/chords";
 import { useAuth, useData, USERS } from "@/lib/store";
 import { useLiveSync } from "@/lib/use-live-sync";
 import { normalizeEvent, normalizeSong } from "@/lib/view-models";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -95,6 +95,7 @@ function LivePage() {
     viewers,
     viewerCount,
     joinEvent,
+    stageChange,
     takeScroller,
     setIndex,
     sendScroll,
@@ -104,7 +105,15 @@ function LivePage() {
   const items = eventData?.playlists.flatMap((playlist) => playlist.items) ?? [];
   const songMap = useMemo(() => buildSongLookup(songsData), [songsData]);
   const remoteScrollerId = liveState.scrollerId;
-  const activeIndex = connected ? liveState.index : local.liveIndex;
+  const activeIndex = useMemo(() => {
+    if (!items.length) return 0;
+    if (!connected) return Math.max(0, Math.min(local.liveIndex, items.length - 1));
+    if (liveState.itemId) {
+      const matchedIndex = items.findIndex((item) => item.id === liveState.itemId);
+      if (matchedIndex >= 0) return matchedIndex;
+    }
+    return Math.max(0, Math.min(liveState.index, items.length - 1));
+  }, [connected, items, liveState.index, liveState.itemId, local.liveIndex]);
   const activeScrollerId = connected ? remoteScrollerId : local.liveScrollerId;
   const isScroller = connected ? remoteScrollerId === user?.id : local.liveScrollerId === user?.id;
   const effectiveFullscreen = isFullscreen || isPseudoFullscreen;
@@ -115,38 +124,39 @@ function LivePage() {
   const prevSong = activeIndex > 0 ? songMap.get(items[activeIndex - 1]?.songId) : null;
   const nextSong = items[activeIndex + 1] ? songMap.get(items[activeIndex + 1]?.songId) : null;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
+  const loadStageData = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
       if (!API_ENABLED) {
         setLoading(false);
         return;
       }
 
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError("");
 
       try {
         const stageRes = await api.getStage(eventId);
-        if (cancelled) return;
         const normalizedEvent = normalizeEvent(stageRes.event);
         setEventData(normalizedEvent);
         setSongsData((stageRes.songs || []).map(normalizeSong));
       } catch (loadError: unknown) {
-        if (cancelled) return;
         setError(getErrorMessage(loadError, "Failed to load stage data"));
         if (localEvent) setEventData(localEvent as ViewEvent);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!silent) setLoading(false);
       }
-    }
+    },
+    [eventId, localEvent],
+  );
 
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, localEvent]);
+  useEffect(() => {
+    void loadStageData();
+  }, [loadStageData]);
+
+  useEffect(() => {
+    if (!stageChange) return;
+    void loadStageData({ silent: true });
+  }, [loadStageData, stageChange]);
 
   useEffect(() => {
     if (!connected) return;
@@ -297,8 +307,9 @@ function LivePage() {
 
   const goIndex = (index: number) => {
     if (!isScroller) return;
+    const itemId = items[index]?.id || null;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    if (connected) setIndex(index);
+    if (connected) setIndex(index, itemId);
     local.setLiveIndex(index);
     setScrolling(false);
     if (connected) setPlayback(false, speed);

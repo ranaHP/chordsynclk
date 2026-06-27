@@ -4,6 +4,7 @@ import Event from "../models/Event.js";
 import Group from "../models/Group.js";
 import { requireAuth } from "../middleware/auth.js";
 import { buildCacheKey, invalidateTags, remember } from "../lib/cache.js";
+import { emitLiveStageChanged } from "../socket.js";
 
 const router = Router();
 const EVENT_CACHE_TTL_MS = 60 * 1000;
@@ -14,6 +15,14 @@ function eventFilter(id) {
   return mongoose.Types.ObjectId.isValid(id)
     ? { $or: [{ _id: id }, { eventId: id }] }
     : { eventId: id };
+}
+
+function invalidateEventTags(event, group) {
+  invalidateTags(["events", `event:${event.id}`, `group:${group.id}`]);
+}
+
+function emitStageRefresh(event, reason) {
+  emitLiveStageChanged([event.id, event.eventId], { reason });
 }
 
 async function loadEvent(req, res, next) {
@@ -104,7 +113,8 @@ router.patch("/:id", loadEvent, async (req, res, next) => {
       if (req.body[field] !== undefined) req.event[field] = req.body[field];
     }
     await req.event.save();
-    invalidateTags(["events", `event:${req.event.id}`, `group:${req.group.id}`]);
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "event-updated");
     res.json({ event: req.event });
   } catch (e) {
     next(e);
@@ -127,7 +137,8 @@ router.post("/:id/playlists", loadEvent, async (req, res, next) => {
     if (!name) return res.status(400).json({ error: "name required" });
     req.event.playlists.push({ name, description, items: [] });
     await req.event.save();
-    invalidateTags(["events", `event:${req.event.id}`, `group:${req.group.id}`]);
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "playlist-created");
     res.status(201).json({ event: req.event });
   } catch (e) {
     next(e);
@@ -141,7 +152,8 @@ router.patch("/:id/playlists/:plId", loadEvent, async (req, res, next) => {
     if (req.body.name !== undefined) playlist.name = req.body.name;
     if (req.body.description !== undefined) playlist.description = req.body.description;
     await req.event.save();
-    invalidateTags(["events", `event:${req.event.id}`, `group:${req.group.id}`]);
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "playlist-updated");
     res.json({ event: req.event });
   } catch (e) {
     next(e);
@@ -154,7 +166,8 @@ router.delete("/:id/playlists/:plId", loadEvent, async (req, res, next) => {
     if (!playlist) return res.status(404).json({ error: "Playlist not found" });
     playlist.deleteOne();
     await req.event.save();
-    invalidateTags(["events", `event:${req.event.id}`, `group:${req.group.id}`]);
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "playlist-deleted");
     res.json({ event: req.event });
   } catch (e) {
     next(e);
@@ -169,7 +182,8 @@ router.post("/:id/playlists/:plId/items", loadEvent, async (req, res, next) => {
     if (!songId) return res.status(400).json({ error: "songId required" });
     playlist.items.push({ songId, partName, order: playlist.items.length });
     await req.event.save();
-    invalidateTags(["events", `event:${req.event.id}`, `group:${req.group.id}`]);
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "playlist-item-added");
     res.status(201).json({ event: req.event });
   } catch (e) {
     next(e);
@@ -184,7 +198,8 @@ router.delete("/:id/playlists/:plId/items/:itemId", loadEvent, async (req, res, 
     if (!item) return res.status(404).json({ error: "Item not found" });
     item.deleteOne();
     await req.event.save();
-    invalidateTags(["events", `event:${req.event.id}`, `group:${req.group.id}`]);
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "playlist-item-removed");
     res.json({ event: req.event });
   } catch (e) {
     next(e);
@@ -207,7 +222,8 @@ router.post("/:id/playlists/:plId/reorder", loadEvent, async (req, res, next) =>
     items.splice(to, 0, moved);
     playlist.items = items.map((item, index) => ({ ...item, order: index }));
     await req.event.save();
-    invalidateTags(["events", `event:${req.event.id}`, `group:${req.group.id}`]);
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "playlist-reordered");
     res.json({ event: req.event });
   } catch (e) {
     next(e);

@@ -4,6 +4,7 @@ import { API_URL, getToken } from "./api";
 
 export interface LiveState {
   index: number;
+  itemId: string | null;
   scrollTop: number;
   scrollPct: number;
   progressSpeed: number;
@@ -24,6 +25,12 @@ export interface LiveJoinEvent {
   ts: number;
 }
 
+export interface LiveStageChangeEvent {
+  eventId: string;
+  reason?: string;
+  ts: number;
+}
+
 interface UseLiveSyncOptions {
   eventId: string;
   enabled?: boolean;
@@ -41,6 +48,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
   const [connected, setConnected] = useState(false);
   const [state, setState] = useState<LiveState>({
     index: 0,
+    itemId: null,
     scrollTop: 0,
     scrollPct: 0,
     progressSpeed: 0,
@@ -51,6 +59,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
   });
   const [viewers, setViewers] = useState<LiveViewer[]>([]);
   const [joinEvent, setJoinEvent] = useState<LiveJoinEvent | null>(null);
+  const [stageChange, setStageChange] = useState<LiveStageChangeEvent | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -69,6 +78,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     s.on("live:state", (st: LiveState) => setState((prev) => ({ ...prev, ...st })));
     s.on("live:viewers", ({ users }: { count: number; users: LiveViewer[] }) => setViewers(users));
     s.on("live:viewer-joined", (event: LiveJoinEvent) => setJoinEvent(event));
+    s.on("live:stage-changed", (event: LiveStageChangeEvent) => setStageChange(event));
 
     return () => {
       s.emit("live:leave");
@@ -86,9 +96,13 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     state,
     viewers,
     joinEvent,
+    stageChange,
     viewerCount: viewers.length,
     takeScroller: useCallback(() => emit("live:take-scroller"), [emit]),
-    setIndex: useCallback((index: number) => emit("live:index", { index }), [emit]),
+    setIndex: useCallback(
+      (index: number, itemId?: string | null) => emit("live:index", { index, itemId }),
+      [emit],
+    ),
     sendScroll: useCallback(
       (scrollTop: number, scrollPct: number, progressSpeed = 0) =>
         emit("live:scroll", { scrollTop, scrollPct, progressSpeed }),

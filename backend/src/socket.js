@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
  * { [eventId]: { index, scrollTop, scrollPct, progressSpeed, playing, speed, scrollerId, viewers: Map<socketId, user> } }
  */
 const rooms = new Map();
+let ioRef = null;
 
 function markUpdated(room) {
   room.updatedAt = Date.now();
@@ -15,6 +16,7 @@ function ensureRoom(eventId) {
   if (!r) {
     r = {
       index: 0,
+      itemId: null,
       scrollTop: 0,
       scrollPct: 0,
       progressSpeed: 0,
@@ -34,6 +36,7 @@ export function getLiveState(eventId) {
   if (!r) return null;
   return {
     index: r.index,
+    itemId: r.itemId,
     scrollTop: r.scrollTop,
     scrollPct: r.scrollPct,
     progressSpeed: r.progressSpeed,
@@ -64,8 +67,10 @@ function emitViewerJoined(io, eventId, user) {
 function snapshot(r) {
   return {
     index: r.index,
+    itemId: r.itemId,
     scrollTop: r.scrollTop,
     scrollPct: r.scrollPct,
+    progressSpeed: r.progressSpeed,
     playing: r.playing,
     speed: r.speed,
     scrollerId: r.scrollerId,
@@ -73,7 +78,21 @@ function snapshot(r) {
   };
 }
 
+export function emitLiveStageChanged(eventIds, payload = {}) {
+  if (!ioRef) return;
+  const ids = [...new Set((Array.isArray(eventIds) ? eventIds : [eventIds]).filter(Boolean))];
+  ids.forEach((eventId) => {
+    ioRef.to(`event:${eventId}`).emit("live:stage-changed", {
+      eventId,
+      ts: Date.now(),
+      ...payload,
+    });
+  });
+}
+
 export function attachSocket(io) {
+  ioRef = io;
+
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("Unauthorized"));
@@ -131,8 +150,9 @@ export function attachSocket(io) {
 
     socket.on(
       "live:index",
-      onlyScroller((r, { index }) => {
+      onlyScroller((r, { index, itemId = null }) => {
         r.index = index;
+        r.itemId = itemId || null;
         r.scrollTop = 0;
         r.scrollPct = 0;
         r.progressSpeed = 0;
