@@ -10,6 +10,7 @@ export interface LiveState {
   progressSpeed: number;
   playing: boolean;
   speed: number;
+  transpose: number;
   scrollerId: string | null;
   updatedAt: number;
 }
@@ -54,6 +55,7 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     progressSpeed: 0,
     playing: false,
     speed: 1,
+    transpose: 0,
     scrollerId: null,
     updatedAt: 0,
   });
@@ -112,5 +114,6 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
       (playing: boolean, speed: number) => emit("live:playback", { playing, speed }),
       [emit],
     ),
+    setTranspose: useCallback((transpose: number) => emit("live:transpose", { transpose }), [emit]),
   };
 }

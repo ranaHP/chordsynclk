@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { api, API_ENABLED } from "@/lib/api";
-import { transposeKeyLabel } from "@/lib/chords";
+import { useAppSettings } from "@/lib/app-settings";
+import { transposeKeyLabel, uniqueTransposedChords } from "@/lib/chords";
 import { useAuth, useData, USERS } from "@/lib/store";
 import { useLiveSync } from "@/lib/use-live-sync";
 import { normalizeEvent, normalizeSong } from "@/lib/view-models";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
   Pause,
   Play,
   Plus,
+  SlidersHorizontal,
   Users as UsersIcon,
   Wifi,
   WifiOff,
@@ -28,6 +30,56 @@ export const Route = createFileRoute("/live/$eventId")({
 
 type ViewEvent = ReturnType<typeof normalizeEvent>;
 type ViewSong = ReturnType<typeof normalizeSong>;
+type ArrangementSectionLike = {
+  name?: string;
+  lines?: Array<{
+    type?: string;
+    chordLine?: string;
+    lyricLine?: string;
+  }>;
+};
+type SongKeyParts = { root: string; suffix: string };
+
+const NOTE_TO_INDEX: Record<string, number> = {
+  C: 0,
+  "B#": 0,
+  "C#": 1,
+  Db: 1,
+  D: 2,
+  "D#": 3,
+  Eb: 3,
+  E: 4,
+  Fb: 4,
+  F: 5,
+  "E#": 5,
+  "F#": 6,
+  Gb: 6,
+  G: 7,
+  "G#": 8,
+  Ab: 8,
+  A: 9,
+  "A#": 10,
+  Bb: 10,
+  B: 11,
+  Cb: 11,
+};
+
+const TRANSPOSE_NOTE_ROWS = [
+  ["Ab", "A", "A#", "Bb", "B", "C"],
+  ["C#", "Db", "D", "D#", "Eb", "E"],
+  ["F", "F#", "Gb", "G", "G#"],
+];
+
+function parseSongKey(key: string): SongKeyParts | null {
+  const match = key?.match(/^([A-G](?:#|b)?)(.*)$/);
+  if (!match) return null;
+  return { root: match[1], suffix: match[2] || "" };
+}
+
+function normalizeEnharmonic(note: string) {
+  const index = NOTE_TO_INDEX[note];
+  return typeof index === "number" ? index : -1;
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -40,6 +92,19 @@ function isFullSongPartName(value?: string | null) {
     .toLowerCase()
     .replace(/[\s_-]+/g, " ");
   return normalized === "full song" || normalized === "fullsong" || normalized === "song";
+}
+
+function buildArrangementParts(arrangement: ArrangementSectionLike[] = []) {
+  return arrangement.map((section, index) => ({
+    name: section?.name || `Section ${index + 1}`,
+    chords: (section?.lines || []).map((line) => line?.chordLine || "").join("\n"),
+    lyrics: (section?.lines || []).map((line) => line?.lyricLine || "").join("\n"),
+    lines: (section?.lines || []).map((line) => ({
+      type: line?.type || "lyric_only",
+      chordLine: line?.chordLine || "",
+      lyricLine: line?.lyricLine || "",
+    })),
+  }));
 }
 
 function buildSongLookup(songs: ViewSong[]) {
@@ -61,6 +126,7 @@ function shouldUsePseudoFullscreen() {
 }
 
 function LivePage() {
+  const { settings } = useAppSettings();
   const { eventId } = Route.useParams();
   const local = useData();
   const { user } = useAuth();
@@ -79,6 +145,7 @@ function LivePage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const [fontSizeStep, setFontSizeStep] = useState(0);
+  const [readerToolsOpen, setReaderToolsOpen] = useState(false);
   const [celebration, setCelebration] = useState<{ name: string; ts: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -100,9 +167,13 @@ function LivePage() {
     setIndex,
     sendScroll,
     setPlayback,
+    setTranspose: syncTranspose,
   } = useLiveSync({ eventId });
 
-  const items = eventData?.playlists.flatMap((playlist) => playlist.items) ?? [];
+  const items = useMemo(
+    () => eventData?.playlists.flatMap((playlist) => playlist.items) ?? [],
+    [eventData],
+  );
   const songMap = useMemo(() => buildSongLookup(songsData), [songsData]);
   const remoteScrollerId = liveState.scrollerId;
   const activeIndex = useMemo(() => {
@@ -117,7 +188,8 @@ function LivePage() {
   const activeScrollerId = connected ? remoteScrollerId : local.liveScrollerId;
   const isScroller = connected ? remoteScrollerId === user?.id : local.liveScrollerId === user?.id;
   const effectiveFullscreen = isFullscreen || isPseudoFullscreen;
-  const fontSizeMultiplier = Math.max(0.72, Math.min(1.72, 1 + fontSizeStep * 0.08));
+  const baseStageMultiplier = Math.max(0.4, (settings.stageReaderFontPercent || 100) / 100);
+  const fontSizeMultiplier = Math.max(0.4, baseStageMultiplier + fontSizeStep * 0.08);
 
   const current = items[activeIndex];
   const song = current ? songMap.get(current.songId) : null;
@@ -162,7 +234,8 @@ function LivePage() {
     if (!connected) return;
     setScrolling(liveState.playing);
     setSpeed(liveState.speed || 1);
-  }, [connected, liveState.playing, liveState.speed]);
+    setTranspose(Math.max(-6, Math.min(6, liveState.transpose || 0)));
+  }, [connected, liveState.playing, liveState.speed, liveState.transpose]);
 
   useEffect(() => {
     if (!joinEvent || joinEvent.user.id === user?.id) return;
@@ -380,13 +453,44 @@ function LivePage() {
     );
   }
 
+  const arrangedParts =
+    current && Array.isArray(current.arrangement) && current.arrangement.length
+      ? buildArrangementParts(current.arrangement)
+      : [];
+  const itemBaseTranspose = Number(current?.transpose || 0);
+  const effectiveTranspose = itemBaseTranspose + transpose;
+  const songKeyParts = song ? parseSongKey(song.key) : null;
+  const renderedKey = song ? transposeKeyLabel(song.key, effectiveTranspose) : "-";
+  const activeTransposeRoot = song ? parseSongKey(renderedKey)?.root || null : null;
+
+  const selectTransposeRoot = (targetRoot: string) => {
+    if (!songKeyParts || !isScroller) return;
+    const sourceIndex = normalizeEnharmonic(songKeyParts.root);
+    const targetIndex = normalizeEnharmonic(targetRoot);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const totalSemitones = ((targetIndex - sourceIndex + 18) % 12) - 6;
+    const nextLiveTranspose = Math.max(-6, Math.min(6, totalSemitones - itemBaseTranspose));
+    setTranspose(nextLiveTranspose);
+    if (connected) syncTranspose(nextLiveTranspose);
+  };
+
   const partsToShow = song
-    ? current?.partName && !isFullSongPartName(current.partName)
-      ? song.parts.filter(
-          (part) => part.name.trim().toLowerCase() === current.partName?.trim().toLowerCase(),
-        )
-      : song.parts
-    : [];
+    ? arrangedParts.length
+      ? arrangedParts
+      : current?.partName && !isFullSongPartName(current.partName)
+        ? song.parts.filter(
+            (part) => part.name.trim().toLowerCase() === current.partName?.trim().toLowerCase(),
+          )
+        : song.parts
+    : arrangedParts;
+  const uniqueChordList = uniqueTransposedChords(
+    partsToShow.flatMap((part) =>
+      Array.isArray(part.lines) && part.lines.length
+        ? part.lines.map((line) => line.chordLine || "").filter(Boolean)
+        : part.chords.split("\n").filter(Boolean),
+    ),
+    effectiveTranspose,
+  );
 
   const scrollerName =
     (connected ? viewers.find((viewer) => viewer.id === activeScrollerId)?.name : null) ??
@@ -458,7 +562,11 @@ function LivePage() {
             onClick={toggleFullscreen}
             className="size-9 rounded-lg flex items-center justify-center hover:bg-white/5"
           >
-            {effectiveFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            {effectiveFullscreen ? (
+              <Minimize2 className="size-4" />
+            ) : (
+              <Maximize2 className="size-4" />
+            )}
           </button>
         </div>
       </header>
@@ -483,24 +591,46 @@ function LivePage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1">
-            <button
-              onClick={() => setTranspose((current) => Math.max(-6, current - 1))}
-              className="size-7 rounded-md flex items-center justify-center hover:bg-white/10"
-            >
-              <Minus className="size-3.5" />
-            </button>
-            <span className="chord-text min-w-8 text-center text-xs">
-              {transpose > 0 ? `+${transpose}` : transpose}
-            </span>
-            <button
-              onClick={() => setTranspose((current) => Math.min(6, current + 1))}
-              className="size-7 rounded-md flex items-center justify-center hover:bg-white/10"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </div>
+          <button
+            onClick={() => setReaderToolsOpen((current) => !current)}
+            className={`flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold ${
+              readerToolsOpen
+                ? "bg-white/10 text-white"
+                : "bg-white/5 text-white/70 hover:text-white"
+            }`}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Display
+          </button>
         </div>
+
+        {readerToolsOpen && (
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <StageControlCard title="Transpose" subtitle={`Current key ${renderedKey}`}>
+              <TransposeKeyPicker
+                activeRoot={activeTransposeRoot}
+                disabled={!songKeyParts || !isScroller}
+                onSelect={selectTransposeRoot}
+              />
+            </StageControlCard>
+
+            <StageControlCard title="Chord List" subtitle="Unique chords to play after transpose">
+              <div className="flex flex-wrap gap-2">
+                {uniqueChordList.map((chord) => (
+                  <span
+                    key={chord}
+                    className="chord-text rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm"
+                  >
+                    {chord}
+                  </span>
+                ))}
+                {!uniqueChordList.length ? (
+                  <span className="text-sm text-white/45">No chords available</span>
+                ) : null}
+              </div>
+            </StageControlCard>
+          </div>
+        )}
       </div>
 
       <div
@@ -523,8 +653,9 @@ function LivePage() {
                   {song.title}
                 </h1>
                 <p className="mt-2 text-base text-white/50 sm:text-lg">
-                  {song.artist} · Key {transposeKeyLabel(song.key, transpose)} · {song.capo} ·{" "}
-                  {song.tempo} BPM
+                  {song.artist} · Key {transposeKeyLabel(song.key, effectiveTranspose)} ·{" "}
+                  {song.capo} · {song.tempo} BPM · Song{" "}
+                  {itemBaseTranspose > 0 ? `+${itemBaseTranspose}` : itemBaseTranspose}
                 </p>
               </div>
 
@@ -534,7 +665,7 @@ function LivePage() {
                     key={`${part.name}-${index}`}
                     part={part}
                     highlight={part.name === "Chorus" || part.name === "Final Chorus"}
-                    transpose={transpose}
+                    transpose={effectiveTranspose}
                     fontScale={fontScale}
                     fontSizeMultiplier={fontSizeMultiplier}
                   />
@@ -618,6 +749,71 @@ function JoinCelebration({ name }: { name: string }) {
         <div className="celebrate-dot right-6 top-4" />
         <div className="celebrate-dot right-12 top-8" />
       </div>
+    </div>
+  );
+}
+
+function StageControlCard({
+  title,
+  subtitle,
+  children,
+  className = "",
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={`rounded-[1.15rem] border border-white/10 bg-stage-black/40 p-3 sm:p-4 ${className}`.trim()}
+    >
+      <div className="mb-2.5">
+        <p className="text-sm font-bold text-white">{title}</p>
+        <p className="text-xs text-white/45">{subtitle}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function TransposeKeyPicker({
+  activeRoot,
+  disabled,
+  onSelect,
+}: {
+  activeRoot: string | null;
+  disabled?: boolean;
+  onSelect: (root: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {TRANSPOSE_NOTE_ROWS.map((row, rowIndex) => (
+        <div key={rowIndex} className="grid grid-cols-6 gap-1.5">
+          {row.map((note) => {
+            const active = activeRoot === note;
+            return (
+              <button
+                key={note}
+                type="button"
+                disabled={disabled}
+                onClick={() => onSelect(note)}
+                className={`rounded-lg px-2 py-1.5 text-sm font-semibold transition-colors ${
+                  active
+                    ? "bg-amber-glow text-stage-black"
+                    : "bg-white/5 text-white/78 hover:bg-white/10"
+                } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+              >
+                {note}
+              </button>
+            );
+          })}
+          {row.length < 6 &&
+            Array.from({ length: 6 - row.length }).map((_, fillerIndex) => (
+              <div key={`filler-${fillerIndex}`} />
+            ))}
+        </div>
+      ))}
     </div>
   );
 }

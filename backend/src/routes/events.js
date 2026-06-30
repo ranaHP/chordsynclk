@@ -178,13 +178,39 @@ router.post("/:id/playlists/:plId/items", loadEvent, async (req, res, next) => {
   try {
     const playlist = req.event.playlists.id(req.params.plId);
     if (!playlist) return res.status(404).json({ error: "Playlist not found" });
-    const { songId, partName } = req.body || {};
+    const { songId, partName, arrangement, transpose } = req.body || {};
     if (!songId) return res.status(400).json({ error: "songId required" });
-    playlist.items.push({ songId, partName, order: playlist.items.length });
+    playlist.items.push({
+      songId,
+      partName,
+      transpose: typeof transpose === "number" ? transpose : 0,
+      arrangement: Array.isArray(arrangement) ? arrangement : [],
+      order: playlist.items.length,
+    });
     await req.event.save();
     invalidateEventTags(req.event, req.group);
     emitStageRefresh(req.event, "playlist-item-added");
     res.status(201).json({ event: req.event });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch("/:id/playlists/:plId/items/:itemId", loadEvent, async (req, res, next) => {
+  try {
+    const playlist = req.event.playlists.id(req.params.plId);
+    if (!playlist) return res.status(404).json({ error: "Playlist not found" });
+    const item = playlist.items.id(req.params.itemId);
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    if (req.body?.partName !== undefined) item.partName = req.body.partName;
+    if (typeof req.body?.transpose === "number") item.transpose = req.body.transpose;
+    if (Array.isArray(req.body?.arrangement)) item.arrangement = req.body.arrangement;
+
+    await req.event.save();
+    invalidateEventTags(req.event, req.group);
+    emitStageRefresh(req.event, "playlist-item-updated");
+    res.json({ event: req.event });
   } catch (e) {
     next(e);
   }

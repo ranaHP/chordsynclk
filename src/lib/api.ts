@@ -67,12 +67,15 @@ type EventListResponse = { events: ApiRecord[] };
 type EventResponse = { event: ApiRecord };
 type StageResponse = { event: ApiRecord; songs: ApiRecord[]; state: ApiRecord | null };
 type UserListResponse = PaginatedResponse<"users">;
+type AdminUserCreateResponse = { user: ApiRecord; created: boolean; promoted: boolean };
+type SettingsResponse = { settings: ApiRecord };
 type SongFilters = {
   artistName?: string;
   key?: string;
   timeSignature?: string;
   source?: string;
   genre?: string;
+  favoriteOnly?: boolean;
 };
 type SongListOptions = {
   sort?: "title" | "artist" | "key" | "recent";
@@ -103,6 +106,13 @@ export const api = {
     }),
   guest: () => request<AuthResponse>("/api/auth/guest", { method: "POST" }),
   me: () => request<UserResponse>("/api/auth/me"),
+  getPublicSettings: () => request<SettingsResponse>("/api/settings/public"),
+  getAdminSettings: () => request<SettingsResponse>("/api/settings/admin"),
+  updateAdminSettings: (body: ApiRecord) =>
+    request<SettingsResponse>("/api/settings/admin", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   // Artists / songs
   listArtists: (q = "", page = 1, limit = 24) =>
@@ -122,7 +132,7 @@ export const api = {
     options: SongListOptions = {},
   ) =>
     request<SongListResponse>(
-      `/api/songs?q=${encodeURIComponent(q)}&artistSlug=${encodeURIComponent(artistSlug)}&page=${page}&limit=${limit}&artistName=${encodeURIComponent(filters.artistName || "")}&key=${encodeURIComponent(filters.key || "")}&timeSignature=${encodeURIComponent(filters.timeSignature || "")}&source=${encodeURIComponent(filters.source || "")}&genre=${encodeURIComponent(filters.genre || "")}&sort=${encodeURIComponent(options.sort || "title")}&content=${encodeURIComponent(options.content || "summary")}`,
+      `/api/songs?q=${encodeURIComponent(q)}&artistSlug=${encodeURIComponent(artistSlug)}&page=${page}&limit=${limit}&artistName=${encodeURIComponent(filters.artistName || "")}&key=${encodeURIComponent(filters.key || "")}&timeSignature=${encodeURIComponent(filters.timeSignature || "")}&source=${encodeURIComponent(filters.source || "")}&genre=${encodeURIComponent(filters.genre || "")}&favoriteOnly=${filters.favoriteOnly ? "true" : "false"}&sort=${encodeURIComponent(options.sort || "title")}&content=${encodeURIComponent(options.content || "summary")}`,
     ),
   getSongsByIds: (ids: string[]) =>
     request<SongBatchResponse>(
@@ -130,6 +140,14 @@ export const api = {
     ),
   getSong: (songId: string) =>
     request<SongDetailResponse>(`/api/songs/${encodeURIComponent(songId)}`),
+  setSongFavorite: (songId: string, favorite: boolean) =>
+    request<{ favorite: boolean; favoriteSongIds: string[] }>(
+      `/api/songs/${encodeURIComponent(songId)}/favorite`,
+      {
+        method: "POST",
+        body: JSON.stringify({ favorite }),
+      },
+    ),
   createSong: (body: ApiRecord) =>
     request<SongResponse>(`/api/songs`, { method: "POST", body: JSON.stringify(body) }),
   updateSong: (songId: string, body: ApiRecord) =>
@@ -137,6 +155,14 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  reindexSongSearch: (limit = 1000) =>
+    request<{ updated: number; scanned: number; remaining: number }>(
+      `/api/songs/admin/reindex-search`,
+      {
+        method: "POST",
+        body: JSON.stringify({ limit }),
+      },
+    ),
   deleteSong: (songId: string) =>
     request<{ ok: true }>(`/api/songs/${encodeURIComponent(songId)}`, { method: "DELETE" }),
 
@@ -145,6 +171,13 @@ export const api = {
   createGroup: (body: ApiRecord) =>
     request<GroupResponse>(`/api/groups`, { method: "POST", body: JSON.stringify(body) }),
   getGroup: (id: string) => request<GroupDetailResponse>(`/api/groups/${id}`),
+  updateGroup: (id: string, body: ApiRecord) =>
+    request<GroupResponse>(`/api/groups/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteGroup: (id: string) =>
+    request<{ ok: true }>(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" }),
   joinGroup: (inviteCode: string) =>
     request<GroupResponse>(`/api/groups/join/${encodeURIComponent(inviteCode)}`, {
       method: "POST",
@@ -165,6 +198,13 @@ export const api = {
   createEvent: (body: ApiRecord) =>
     request<EventResponse>(`/api/events`, { method: "POST", body: JSON.stringify(body) }),
   getEvent: (id: string) => request<EventResponse>(`/api/events/${encodeURIComponent(id)}`),
+  updateEvent: (id: string, body: ApiRecord) =>
+    request<EventResponse>(`/api/events/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteEvent: (id: string) =>
+    request<{ ok: true }>(`/api/events/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getStage: (id: string) => request<StageResponse>(`/api/live/${encodeURIComponent(id)}/stage`),
   updatePlaylist: (id: string, plId: string, body: ApiRecord) =>
     request<EventResponse>(`/api/events/${id}/playlists/${plId}`, {
@@ -178,10 +218,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name, description }),
     }),
-  addPlaylistItem: (id: string, plId: string, songId: string, partName?: string) =>
+  addPlaylistItem: (
+    id: string,
+    plId: string,
+    songId: string,
+    partName?: string,
+    arrangement?: ApiRecord[],
+    transpose?: number,
+  ) =>
     request<EventResponse>(`/api/events/${id}/playlists/${plId}/items`, {
       method: "POST",
-      body: JSON.stringify({ songId, partName }),
+      body: JSON.stringify({ songId, partName, arrangement, transpose }),
+    }),
+  updatePlaylistItem: (id: string, plId: string, itemId: string, body: ApiRecord) =>
+    request<EventResponse>(`/api/events/${id}/playlists/${plId}/items/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
   removePlaylistItem: (id: string, plId: string, itemId: string) =>
     request<EventResponse>(`/api/events/${id}/playlists/${plId}/items/${itemId}`, {
@@ -194,4 +246,9 @@ export const api = {
     }),
   listUsers: (q = "", page = 1, limit = 20) =>
     request<UserListResponse>(`/api/users?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
+  createAdminUser: (body: { name: string; email: string; username: string; password: string }) =>
+    request<AdminUserCreateResponse>(`/api/users/admin/create`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

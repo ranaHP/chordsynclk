@@ -82,6 +82,7 @@ function EventPage() {
   const [songTotal, setSongTotal] = useState(0);
   const [songLoading, setSongLoading] = useState(false);
   const [partChoice, setPartChoice] = useState<(typeof PART_OPTIONS)[number]>("Full Song");
+  const [showSongFilters, setShowSongFilters] = useState(false);
   const [editingPlId, setEditingPlId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", description: "" });
   const [actionKey, setActionKey] = useState<string | null>(null);
@@ -214,7 +215,9 @@ function EventPage() {
       setPlForm({ name: "", description: "" });
       setPlOpen(false);
     } catch (playlistError: unknown) {
-      setError(playlistError instanceof Error ? playlistError.message : "Failed to create playlist");
+      setError(
+        playlistError instanceof Error ? playlistError.message : "Failed to create playlist",
+      );
     } finally {
       setActionKey(null);
     }
@@ -234,7 +237,9 @@ function EventPage() {
 
       setEditingPlId(null);
     } catch (playlistError: unknown) {
-      setError(playlistError instanceof Error ? playlistError.message : "Failed to update playlist");
+      setError(
+        playlistError instanceof Error ? playlistError.message : "Failed to update playlist",
+      );
     } finally {
       setActionKey(null);
     }
@@ -252,7 +257,9 @@ function EventPage() {
         setEventData(local.events.find((e) => e.id === ev.id) || null);
       }
     } catch (playlistError: unknown) {
-      setError(playlistError instanceof Error ? playlistError.message : "Failed to delete playlist");
+      setError(
+        playlistError instanceof Error ? playlistError.message : "Failed to delete playlist",
+      );
     } finally {
       setActionKey(null);
     }
@@ -272,10 +279,10 @@ function EventPage() {
         });
         setEventData(local.events.find((e) => e.id === ev.id) || null);
       }
-
-      setAddSongFor(null);
     } catch (playlistError: unknown) {
-      setError(playlistError instanceof Error ? playlistError.message : "Failed to add playlist item");
+      setError(
+        playlistError instanceof Error ? playlistError.message : "Failed to add playlist item",
+      );
     } finally {
       setActionKey(null);
     }
@@ -293,7 +300,9 @@ function EventPage() {
         setEventData(local.events.find((e) => e.id === ev.id) || null);
       }
     } catch (playlistError: unknown) {
-      setError(playlistError instanceof Error ? playlistError.message : "Failed to remove playlist item");
+      setError(
+        playlistError instanceof Error ? playlistError.message : "Failed to remove playlist item",
+      );
     } finally {
       setActionKey(null);
     }
@@ -311,7 +320,9 @@ function EventPage() {
         setEventData(local.events.find((e) => e.id === ev.id) || null);
       }
     } catch (playlistError: unknown) {
-      setError(playlistError instanceof Error ? playlistError.message : "Failed to reorder playlist");
+      setError(
+        playlistError instanceof Error ? playlistError.message : "Failed to reorder playlist",
+      );
     } finally {
       setActionKey(null);
     }
@@ -461,7 +472,11 @@ function EventPage() {
                     onDragEnd={() => setDragState(null)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => {
-                      if (!dragState || dragState.playlistId !== pl.id || dragState.itemId === item.id) {
+                      if (
+                        !dragState ||
+                        dragState.playlistId !== pl.id ||
+                        dragState.itemId === item.id
+                      ) {
                         return;
                       }
                       const from = pl.items.findIndex((entry) => entry.id === dragState.itemId);
@@ -532,6 +547,7 @@ function EventPage() {
                   setSongQ("");
                   setSongFilters({ artist: "", key: "", beat: "", source: "" });
                   setSongPage(1);
+                  setShowSongFilters(false);
                   setAddSongFor(pl.id);
                 }}
                 disabled={Boolean(actionKey)}
@@ -540,7 +556,8 @@ function EventPage() {
                 + Add song or part
               </button>
               <p className="text-[10px] text-white/35">
-                Desktop supports drag and drop. On mobile, use the Up and Down buttons for reliable reordering.
+                Desktop supports drag and drop. On mobile, use the Up and Down buttons for reliable
+                reordering.
               </p>
             </div>
           </div>
@@ -576,7 +593,7 @@ function EventPage() {
       )}
 
       {addSongFor && (
-        <Modal title="Add song or section" onClose={() => setAddSongFor(null)}>
+        <Modal title="Add song or section" onClose={() => setAddSongFor(null)} mobileFullscreen>
           <div className="mb-3 flex flex-col gap-2 sm:flex-row">
             <input
               value={songQ}
@@ -596,54 +613,66 @@ function EventPage() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-            <input
-              value={songFilters.artist}
-              onChange={(e) =>
-                setSongFilters((current) => ({ ...current, artist: e.target.value }))
-              }
-              placeholder="Artist name"
-              className={inputCls}
-            />
-            <select
-              value={songFilters.key}
-              onChange={(e) => setSongFilters((current) => ({ ...current, key: e.target.value }))}
-              className={inputCls}
+          <div className="mb-3">
+            <button
+              onClick={() => setShowSongFilters((current) => !current)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/70"
             >
-              <option value="">Key</option>
-              {KEY_OPTIONS.filter(Boolean).map((key) => (
-                <option key={key} value={key}>
-                  {key}
-                </option>
-              ))}
-            </select>
-            <select
-              value={songFilters.beat}
-              onChange={(e) => setSongFilters((current) => ({ ...current, beat: e.target.value }))}
-              className={inputCls}
-            >
-              <option value="">Beat</option>
-              {BEAT_OPTIONS.filter(Boolean).map((beat) => (
-                <option key={beat} value={beat}>
-                  {beat}
-                </option>
-              ))}
-            </select>
-            <select
-              value={songFilters.source}
-              onChange={(e) =>
-                setSongFilters((current) => ({ ...current, source: e.target.value }))
-              }
-              className={inputCls}
-            >
-              <option value="">Source</option>
-              {SOURCE_OPTIONS.filter(Boolean).map((source) => (
-                <option key={source} value={source}>
-                  {source}
-                </option>
-              ))}
-            </select>
+              {showSongFilters ? "Hide filters" : "Show filters"}
+            </button>
           </div>
+          {showSongFilters && (
+            <div className="grid grid-cols-1 gap-2 mb-3 sm:grid-cols-2">
+              <input
+                value={songFilters.artist}
+                onChange={(e) =>
+                  setSongFilters((current) => ({ ...current, artist: e.target.value }))
+                }
+                placeholder="Artist name"
+                className={inputCls}
+              />
+              <select
+                value={songFilters.key}
+                onChange={(e) => setSongFilters((current) => ({ ...current, key: e.target.value }))}
+                className={inputCls}
+              >
+                <option value="">Key</option>
+                {KEY_OPTIONS.filter(Boolean).map((key) => (
+                  <option key={key} value={key}>
+                    {key}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={songFilters.beat}
+                onChange={(e) =>
+                  setSongFilters((current) => ({ ...current, beat: e.target.value }))
+                }
+                className={inputCls}
+              >
+                <option value="">Beat</option>
+                {BEAT_OPTIONS.filter(Boolean).map((beat) => (
+                  <option key={beat} value={beat}>
+                    {beat}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={songFilters.source}
+                onChange={(e) =>
+                  setSongFilters((current) => ({ ...current, source: e.target.value }))
+                }
+                className={inputCls}
+              >
+                <option value="">Source</option>
+                {SOURCE_OPTIONS.filter(Boolean).map((source) => (
+                  <option key={source} value={source}>
+                    {source}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="max-h-80 overflow-y-auto space-y-1.5">
             {songLoading && <p className="py-3 text-xs text-white/50">Loading songs...</p>}
             {librarySongs.map((s) => (

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Link, Outlet, createRootRouteWithContext, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { SettingsProvider } from "../lib/app-settings";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider, DataProvider } from "../lib/store";
 
@@ -59,11 +60,13 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <DataProvider>
-          <Outlet />
-        </DataProvider>
-      </AuthProvider>
+      <SettingsProvider>
+        <AuthProvider>
+          <DataProvider>
+            <Outlet />
+          </DataProvider>
+        </AuthProvider>
+      </SettingsProvider>
     </QueryClientProvider>
   );
 }

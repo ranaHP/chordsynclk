@@ -1,12 +1,20 @@
 // Mock data for ChordSync Live
 export type SongPartName =
-  | "Intro" | "Verse 1" | "Pre-Chorus" | "Chorus" | "Post-Chorus"
-  | "Verse 2" | "Bridge" | "Guitar Solo" | "Final Chorus" | "Outro";
+  | "Intro"
+  | "Verse 1"
+  | "Pre-Chorus"
+  | "Chorus"
+  | "Post-Chorus"
+  | "Verse 2"
+  | "Bridge"
+  | "Guitar Solo"
+  | "Final Chorus"
+  | "Outro";
 
 export interface SongPart {
   name: SongPartName;
-  chords: string;        // chord line like "G  Cmaj7  Em7  D"
-  lyrics: string;        // multi-line lyric block
+  chords: string; // chord line like "G  Cmaj7  Em7  D"
+  lyrics: string; // multi-line lyric block
 }
 
 export interface Song {
@@ -20,7 +28,7 @@ export interface Song {
   genre: string;
   year: number;
   language: string;
-  popularity: number;     // 0-100
+  popularity: number; // 0-100
   difficulty: "Easy" | "Medium" | "Hard";
   capo: string;
   key: string;
@@ -53,7 +61,7 @@ export interface Event {
   name: string;
   description: string;
   image: string;
-  date: string;     // ISO
+  date: string; // ISO
   duration: number; // minutes
   playlists: Playlist[];
 }
@@ -62,6 +70,17 @@ export interface PlaylistItem {
   id: string;
   songId: string;
   partName?: SongPartName | "Full Song";
+  transpose?: number;
+  arrangement?: Array<{
+    sectionId?: string;
+    name: string;
+    sourcePartName?: string;
+    lines: Array<{
+      type?: string;
+      chordLine?: string;
+      lyricLine?: string;
+    }>;
+  }>;
 }
 
 export interface Playlist {
@@ -71,13 +90,31 @@ export interface Playlist {
   items: PlaylistItem[];
 }
 
-const PIC = (s: string, w = 600) =>
-  `https://picsum.photos/seed/${encodeURIComponent(s)}/${w}/${w}`;
-const AVT = (s: string) =>
-  `https://i.pravatar.cc/200?u=${encodeURIComponent(s)}`;
+const PIC = (s: string, w = 600) => `https://picsum.photos/seed/${encodeURIComponent(s)}/${w}/${w}`;
+const AVT = (s: string) => `https://i.pravatar.cc/200?u=${encodeURIComponent(s)}`;
 
-const VIBES = ["Haunting", "Uplifting", "Melancholic", "Energetic", "Dreamy", "Aggressive", "Romantic", "Nostalgic"];
-const GENRES = ["Rock", "Indie", "Folk", "Blues", "Pop", "Country", "Jazz", "Metal", "Alternative", "Acoustic"];
+const VIBES = [
+  "Haunting",
+  "Uplifting",
+  "Melancholic",
+  "Energetic",
+  "Dreamy",
+  "Aggressive",
+  "Romantic",
+  "Nostalgic",
+];
+const GENRES = [
+  "Rock",
+  "Indie",
+  "Folk",
+  "Blues",
+  "Pop",
+  "Country",
+  "Jazz",
+  "Metal",
+  "Alternative",
+  "Acoustic",
+];
 const LANGS = ["English", "Spanish", "Portuguese", "French", "Italian"];
 const BEATS = ["4/4 Driving", "6/8 Sway", "3/4 Waltz", "Shuffle", "Half-Time", "Syncopated"];
 const KEYS = ["G", "C", "D", "Em", "Am", "A", "E", "F", "Bm", "F#m"];
@@ -101,46 +138,47 @@ function buildParts(seed: string, key: string): SongPart[] {
     "F#m": ["F#m", "D", "A", "E"],
   };
   const ch = map[key] ?? map.G;
-  const j = (a: number, b: number, c: number, d: number) => `${ch[a]}   ${ch[b]}   ${ch[c]}   ${ch[d]}`;
+  const j = (a: number, b: number, c: number, d: number) =>
+    `${ch[a]}   ${ch[b]}   ${ch[c]}   ${ch[d]}`;
 
   return [
-    partTemplate("Intro", j(0,2,3,1), [`(Instrumental — let the room settle in)`]),
-    partTemplate("Verse 1", j(0,1,2,3), [
+    partTemplate("Intro", j(0, 2, 3, 1), [`(Instrumental — let the room settle in)`]),
+    partTemplate("Verse 1", j(0, 1, 2, 3), [
       `Walking through the ${seed} streets tonight`,
       `Every shadow knows your name`,
       `Neon flickers, paints the sky in white`,
       `Nothing will be quite the same`,
     ]),
-    partTemplate("Pre-Chorus", j(2,3,0,1), [
+    partTemplate("Pre-Chorus", j(2, 3, 0, 1), [
       `And I can feel it in the air,`,
       `Something rising, calling clear —`,
     ]),
-    partTemplate("Chorus", j(2,3,0,1), [
+    partTemplate("Chorus", j(2, 3, 0, 1), [
       `So sing it loud, sing it for the night`,
       `Hold the chord, let the moment ignite`,
       `Every string a wire to the heart`,
       `This is where the world breaks apart`,
     ]),
-    partTemplate("Verse 2", j(0,1,2,3), [
+    partTemplate("Verse 2", j(0, 1, 2, 3), [
       `Faded letters on a barroom wall`,
       `Tell the stories no one keeps`,
       `Half-drunk dreamers heed the call`,
       `Trade their sorrows for the deep`,
     ]),
-    partTemplate("Bridge", j(1,2,3,0), [
+    partTemplate("Bridge", j(1, 2, 3, 0), [
       `If the dawn forgets to come,`,
       `We will build it from our drums.`,
       `If the silence steals the song,`,
       `We will hum the whole night long.`,
     ]),
-    partTemplate("Guitar Solo", j(0,2,3,1), [`(16 bars — bend the high E like you mean it)`]),
-    partTemplate("Final Chorus", j(2,3,0,1), [
+    partTemplate("Guitar Solo", j(0, 2, 3, 1), [`(16 bars — bend the high E like you mean it)`]),
+    partTemplate("Final Chorus", j(2, 3, 0, 1), [
       `So sing it loud, sing it for the night`,
       `Hold the chord, let the moment ignite`,
       `Every string a wire to the heart`,
       `This is where the world breaks apart`,
     ]),
-    partTemplate("Outro", j(0,2,3,0), [`(Ritardando — fade on the tonic)`]),
+    partTemplate("Outro", j(0, 2, 3, 0), [`(Ritardando — fade on the tonic)`]),
   ];
 }
 
@@ -319,18 +357,60 @@ export const EVENTS: Event[] = [
 ];
 
 export const COLLECTIONS = [
-  { id: "c1", name: "Coffee House Classics", tag: "Acoustic", image: PIC("coffeehouse", 700), songIds: ["song-3","song-10","song-11","song-19"] },
-  { id: "c2", name: "Arena Rock Anthems", tag: "High Gain", image: PIC("arenarock", 700), songIds: ["song-2","song-5","song-13","song-18"] },
-  { id: "c3", name: "Delta Blues Essentials", tag: "Blues", image: PIC("delta", 700), songIds: ["song-6","song-12","song-21"] },
-  { id: "c4", name: "Sunday Songbook", tag: "Folk", image: PIC("songbook", 700), songIds: ["song-7","song-15","song-23","song-25"] },
+  {
+    id: "c1",
+    name: "Coffee House Classics",
+    tag: "Acoustic",
+    image: PIC("coffeehouse", 700),
+    songIds: ["song-3", "song-10", "song-11", "song-19"],
+  },
+  {
+    id: "c2",
+    name: "Arena Rock Anthems",
+    tag: "High Gain",
+    image: PIC("arenarock", 700),
+    songIds: ["song-2", "song-5", "song-13", "song-18"],
+  },
+  {
+    id: "c3",
+    name: "Delta Blues Essentials",
+    tag: "Blues",
+    image: PIC("delta", 700),
+    songIds: ["song-6", "song-12", "song-21"],
+  },
+  {
+    id: "c4",
+    name: "Sunday Songbook",
+    tag: "Folk",
+    image: PIC("songbook", 700),
+    songIds: ["song-7", "song-15", "song-23", "song-25"],
+  },
 ];
 
 export const MASHUPS = [
-  { id: "m1", name: "All-Night Acoustic Mashup", duration: "42 min", image: PIC("allnight", 700), songIds: ["song-1","song-3","song-7","song-10","song-19"] },
-  { id: "m2", name: "Stadium Encore Nonstop", duration: "38 min", image: PIC("stadiumencore", 700), songIds: ["song-2","song-5","song-13","song-18"] },
-  { id: "m3", name: "Slow Burn Blues Roll", duration: "29 min", image: PIC("slowburn", 700), songIds: ["song-6","song-12","song-21","song-24"] },
+  {
+    id: "m1",
+    name: "All-Night Acoustic Mashup",
+    duration: "42 min",
+    image: PIC("allnight", 700),
+    songIds: ["song-1", "song-3", "song-7", "song-10", "song-19"],
+  },
+  {
+    id: "m2",
+    name: "Stadium Encore Nonstop",
+    duration: "38 min",
+    image: PIC("stadiumencore", 700),
+    songIds: ["song-2", "song-5", "song-13", "song-18"],
+  },
+  {
+    id: "m3",
+    name: "Slow Burn Blues Roll",
+    duration: "29 min",
+    image: PIC("slowburn", 700),
+    songIds: ["song-6", "song-12", "song-21", "song-24"],
+  },
 ];
 
-export const getSong = (id: string) => SONGS.find(s => s.id === id);
-export const getUser = (id: string) => USERS.find(u => u.id === id);
-export const getGroup = (id: string) => GROUPS.find(g => g.id === id);
+export const getSong = (id: string) => SONGS.find((s) => s.id === id);
+export const getUser = (id: string) => USERS.find((u) => u.id === id);
+export const getGroup = (id: string) => GROUPS.find((g) => g.id === id);

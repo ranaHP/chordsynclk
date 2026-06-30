@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { buildSongSearchDocument } from "../lib/song-search.js";
 
 const SegmentSchema = new mongoose.Schema(
   {
@@ -67,10 +68,23 @@ const SongSchema = new mongoose.Schema(
     sectionFlow: [String],
     lineCount: Number,
     sectionCount: Number,
+    sectionNames: [String],
+    searchTokens: [String],
+    searchText: String,
   },
   { timestamps: true },
 );
 
-SongSchema.index({ title: "text", artistName: "text", rawText: "text" });
+SongSchema.index({ title: 1, artistName: 1, sectionNames: 1, sectionFlow: 1, tags: 1, chordsUsed: 1 });
+SongSchema.index({ searchTokens: 1 });
+SongSchema.index({ title: "text", artistName: "text", searchText: "text" });
+
+SongSchema.pre("save", function syncSearchFields(next) {
+  const { sectionNames, searchTokens, searchText } = buildSongSearchDocument(this);
+  this.sectionNames = sectionNames;
+  this.searchTokens = searchTokens;
+  this.searchText = searchText;
+  next();
+});
 
 export default mongoose.model("Song", SongSchema);

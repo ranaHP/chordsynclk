@@ -12,9 +12,11 @@ export function normalizeUser(u: any) {
     id,
     name: u?.name || u?.email || "Unknown User",
     handle: u?.handle || (u?.email ? `@${String(u.email).split("@")[0]}` : "@user"),
+    email: u?.email || "",
     avatar:
       u?.avatar || `https://i.pravatar.cc/200?u=${encodeURIComponent(id || u?.email || "user")}`,
     bio: u?.bio || "ChordSync member",
+    isAdmin: !!u?.isAdmin,
   };
 }
 
@@ -54,6 +56,17 @@ export function normalizeEvent(e: any) {
         id: docId(it?._id) || it?.id,
         songId: docId(it?.songId) || it?.songId,
         partName: it?.partName || "Full Song",
+        transpose: Number(it?.transpose || 0),
+        arrangement: (it?.arrangement || []).map((section: any, sectionIndex: number) => ({
+          sectionId: section?.sectionId || `section-${sectionIndex + 1}`,
+          name: section?.name || "Section",
+          sourcePartName: section?.sourcePartName || section?.name || "Section",
+          lines: (section?.lines || []).map((line: any) => ({
+            type: line?.type || "lyric_only",
+            chordLine: line?.chordLine || "",
+            lyricLine: line?.lyricLine || "",
+          })),
+        })),
       })),
     })),
   };
@@ -205,6 +218,7 @@ export function normalizeSong(s: any) {
     key: s?.key || "-",
     tags: s?.tags || [s?.source || "chordslk"],
     beat: s?.timeSignature || s?.beat || "4/4",
+    isFavorite: !!s?.isFavorite,
     parts: hasRenderableSectionLines
       ? partsFromSections
       : partsFromGroupedLines.length

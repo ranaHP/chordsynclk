@@ -2,12 +2,15 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { PaginationBar } from "@/components/PaginationBar";
 import { api, API_ENABLED } from "@/lib/api";
+import { useAuth } from "@/lib/store";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { normalizeSong } from "@/lib/view-models";
+import { readLocalFavoriteSongIds, toggleLocalFavoriteSong } from "@/lib/song-favorites";
 import {
   ArrowRight,
   Clock3,
   Guitar,
+  Heart,
   Loader2,
   Music2,
   Search,
@@ -15,7 +18,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export const Route = createFileRoute("/search")({
   head: () => ({ meta: [{ title: "Browse Chords - ChordSync Live" }] }),
@@ -24,7 +27,24 @@ export const Route = createFileRoute("/search")({
 
 type ViewSong = ReturnType<typeof normalizeSong>;
 
-const KEY_OPTIONS = ["", "A", "Am", "B", "Bm", "Bb", "C", "Cm", "D", "Dm", "E", "Em", "F", "Fm", "G", "Gm"];
+const KEY_OPTIONS = [
+  "",
+  "A",
+  "Am",
+  "B",
+  "Bm",
+  "Bb",
+  "C",
+  "Cm",
+  "D",
+  "Dm",
+  "E",
+  "Em",
+  "F",
+  "Fm",
+  "G",
+  "Gm",
+];
 const BEAT_OPTIONS = ["", "4/4", "3/4", "6/8", "2/4"];
 const SOURCE_OPTIONS = ["", "chordslk"];
 
@@ -47,6 +67,7 @@ function chordPreview(song: ViewSong) {
 }
 
 function SearchPage() {
+  const { user } = useAuth();
   const [q, setQ] = useState("");
   const [artistName, setArtistName] = useState("");
   const [appliedQ, setAppliedQ] = useState("");
@@ -55,8 +76,10 @@ function SearchPage() {
   const [beatFilter, setBeatFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [sortBy, setSortBy] = useState<"title" | "artist" | "key" | "recent">("title");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [songs, setSongs] = useState<ViewSong[]>([]);
   const [previewSongs, setPreviewSongs] = useState<ViewSong[]>([]);
+  const [localFavoriteIds, setLocalFavoriteIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -71,6 +94,45 @@ function SearchPage() {
   const debouncedQ = useDebouncedValue(q, 250);
   const debouncedArtist = useDebouncedValue(artistName, 250);
   const mobileSearchOverlay = searchMode;
+  const usesLocalFavorites = !API_ENABLED || !user;
+
+  useEffect(() => {
+    setLocalFavoriteIds(readLocalFavoriteSongIds());
+  }, []);
+
+  const decorateFavorites = useCallback(
+    (items: ViewSong[]) => {
+      if (!usesLocalFavorites) return items;
+      const favorites = new Set(localFavoriteIds);
+      return items.map((song) => ({ ...song, isFavorite: favorites.has(song.id) }));
+    },
+    [localFavoriteIds, usesLocalFavorites],
+  );
+
+  const filterFavoriteResults = useCallback(
+    (items: ViewSong[]) =>
+      favoriteOnly && usesLocalFavorites ? items.filter((song) => song.isFavorite) : items,
+    [favoriteOnly, usesLocalFavorites],
+  );
+
+  const toggleFavorite = async (songId: string, currentFavorite: boolean) => {
+    const nextFavorite = !currentFavorite;
+
+    if (API_ENABLED && user) {
+      await api.setSongFavorite(songId, nextFavorite);
+    } else {
+      const nextLocal = toggleLocalFavoriteSong(songId, nextFavorite);
+      setLocalFavoriteIds(nextLocal.favoriteSongIds);
+    }
+
+    const updateCollection = (items: ViewSong[]) =>
+      items
+        .map((song) => (song.id === songId ? { ...song, isFavorite: nextFavorite } : song))
+        .filter((song) => (!favoriteOnly || !usesLocalFavorites ? true : song.isFavorite));
+
+    setSongs(updateCollection);
+    setPreviewSongs(updateCollection);
+  };
 
   const focusSearchLayout = () => {
     if (typeof window === "undefined") return;
@@ -100,7 +162,7 @@ function SearchPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [appliedQ, appliedArtistName, keyFilter, beatFilter, sourceFilter, sortBy]);
+  }, [appliedQ, appliedArtistName, keyFilter, beatFilter, sourceFilter, sortBy, favoriteOnly]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,14 +182,17 @@ function SearchPage() {
             key: keyFilter,
             timeSignature: beatFilter,
             source: sourceFilter,
+            favoriteOnly,
           },
           { sort: sortBy, content: "summary" },
         );
         if (cancelled) return;
-        setSongs((res.songs || []).map(normalizeSong));
+        const normalized = decorateFavorites((res.songs || []).map(normalizeSong));
+        const filtered = filterFavoriteResults(normalized);
+        setSongs(filtered);
         setPage(res.page || 1);
-        setPages(res.pages || 1);
-        setTotal(res.total || 0);
+        setPages(favoriteOnly && usesLocalFavorites ? 1 : res.pages || 1);
+        setTotal(favoriteOnly && usesLocalFavorites ? filtered.length : res.total || 0);
       } catch (loadError: unknown) {
         if (cancelled) return;
         setError(getErrorMessage(loadError, "Failed to load songs"));
@@ -140,7 +205,20 @@ function SearchPage() {
     return () => {
       cancelled = true;
     };
-  }, [appliedArtistName, appliedQ, beatFilter, keyFilter, page, sortBy, sourceFilter]);
+  }, [
+    appliedArtistName,
+    appliedQ,
+    beatFilter,
+    decorateFavorites,
+    favoriteOnly,
+    filterFavoriteResults,
+    keyFilter,
+    page,
+    sortBy,
+    sourceFilter,
+    usesLocalFavorites,
+    user,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,11 +245,13 @@ function SearchPage() {
             key: keyFilter,
             timeSignature: beatFilter,
             source: sourceFilter,
+            favoriteOnly,
           },
           { sort: sortBy, content: "summary" },
         );
         if (cancelled) return;
-        setPreviewSongs((res.songs || []).map(normalizeSong));
+        const normalized = decorateFavorites((res.songs || []).map(normalizeSong));
+        setPreviewSongs(filterFavoriteResults(normalized));
       } catch (loadError: unknown) {
         if (cancelled) return;
         setPreviewError(getErrorMessage(loadError, "Failed to preview songs"));
@@ -184,11 +264,25 @@ function SearchPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedArtist, debouncedQ, searchMode, beatFilter, keyFilter, sourceFilter, sortBy]);
+  }, [
+    debouncedArtist,
+    debouncedQ,
+    searchMode,
+    beatFilter,
+    decorateFavorites,
+    favoriteOnly,
+    filterFavoriteResults,
+    keyFilter,
+    sourceFilter,
+    sortBy,
+    user,
+  ]);
 
   return (
     <AppShell>
-      <div className={`mx-auto max-w-7xl px-4 py-5 sm:space-y-6 sm:py-10 ${mobileSearchOverlay ? "space-y-0" : "space-y-5"}`}>
+      <div
+        className={`mx-auto max-w-7xl px-4 py-5 sm:space-y-6 sm:py-10 ${mobileSearchOverlay ? "space-y-0" : "space-y-5"}`}
+      >
         <header
           ref={searchShellRef}
           className={`z-30 -mx-4 px-4 backdrop-blur-xl sm:static sm:mx-0 sm:border-none sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 ${
@@ -199,7 +293,9 @@ function SearchPage() {
         >
           <div
             className={`rounded-[1.45rem] border border-white/10 bg-stage-card/85 shadow-[0_18px_60px_rgba(0,0,0,0.35)] sm:rounded-[1.85rem] ${
-              searchMode ? "flex h-[calc(100dvh-96px)] min-h-0 flex-col space-y-3 p-3" : "space-y-4 p-3.5 sm:p-5"
+              searchMode
+                ? "flex h-[calc(100dvh-96px)] min-h-0 flex-col space-y-3 p-3"
+                : "space-y-4 p-3.5 sm:p-5"
             }`}
           >
             {!searchMode && (
@@ -230,7 +326,9 @@ function SearchPage() {
               </div>
             )}
 
-            <div className={`grid gap-3 ${searchMode ? "" : "lg:grid-cols-[1.6fr_1fr_auto] lg:items-center"}`}>
+            <div
+              className={`grid gap-3 ${searchMode ? "" : "lg:grid-cols-[1.6fr_1fr_auto] lg:items-center"}`}
+            >
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/40" />
                 <input
@@ -350,12 +448,26 @@ function SearchPage() {
                 <option value="key">Sort by Key</option>
                 <option value="recent">Sort by Recent</option>
               </select>
+
+              <button
+                type="button"
+                onClick={() => setFavoriteOnly((current) => !current)}
+                className={`col-span-2 rounded-[1rem] border px-3 py-3 text-sm font-bold transition-colors sm:col-span-1 ${
+                  favoriteOnly
+                    ? "border-amber-glow/35 bg-amber-glow/12 text-amber-glow"
+                    : "border-white/10 bg-[#121318] text-white/70 hover:text-white"
+                }`}
+              >
+                Favorites only
+              </button>
             </div>
 
             {searchMode && (
               <div className="min-h-0 flex-1 overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#0f1015] p-3 sm:p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/40">Quick results</p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/40">
+                    Quick results
+                  </p>
                   <button
                     type="button"
                     onClick={clearDraftSearch}
@@ -381,32 +493,43 @@ function SearchPage() {
                 ) : previewSongs.length ? (
                   <div className="-mx-1 max-h-full space-y-1 overflow-y-auto px-1 pb-6">
                     {previewSongs.map((song) => (
-                      <button
+                      <div
                         key={song.id}
-                        type="button"
-                        onClick={() => {
-                          setQ(song.title);
-                          setArtistName(song.artist);
-                          setAppliedQ(song.title);
-                          setAppliedArtistName(song.artist);
-                          setPage(1);
-                          setSearchMode(false);
-                        }}
-                        className="flex w-full items-center gap-3 rounded-[1rem] border-b border-white/8 bg-transparent px-2 py-3 text-left transition-colors last:border-b-0 hover:bg-white/[0.03]"
+                        className="flex items-center gap-3 rounded-[1rem] border-b border-white/8 bg-transparent px-2 py-3 last:border-b-0 hover:bg-white/[0.03]"
                       >
-                        <img
-                          src={song.cover}
-                          alt={song.title}
-                          className="size-12 shrink-0 rounded-[0.8rem] object-cover"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold text-white">{song.title}</p>
-                          <p className="truncate text-xs text-white/50">{song.artist}</p>
-                        </div>
-                        <div className="text-right text-[11px] text-white/45">
-                          <p>{song.key || "-"}</p>
-                        </div>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQ(song.title);
+                            setArtistName(song.artist);
+                            setAppliedQ(song.title);
+                            setAppliedArtistName(song.artist);
+                            setPage(1);
+                            setSearchMode(false);
+                          }}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <img
+                            src={song.cover}
+                            alt={song.title}
+                            className="size-12 shrink-0 rounded-[0.8rem] object-cover"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold text-white">{song.title}</p>
+                            <p className="truncate text-xs text-white/50">{song.artist}</p>
+                          </div>
+                          <div className="text-right text-[11px] text-white/45">
+                            <p>{song.key || "-"}</p>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleFavorite(song.id, !!song.isFavorite)}
+                          className={`shrink-0 rounded-full p-2 ${song.isFavorite ? "text-amber-glow" : "text-white/35 hover:text-white/70"}`}
+                        >
+                          <Heart className={`size-4 ${song.isFavorite ? "fill-current" : ""}`} />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -456,7 +579,9 @@ function SearchPage() {
                           </div>
                         </div>
 
-                        <span className={`inline-flex shrink-0 rounded-full border px-2 py-1 text-[10px] ${difficultyTone(song.difficulty)}`}>
+                        <span
+                          className={`inline-flex shrink-0 rounded-full border px-2 py-1 text-[10px] ${difficultyTone(song.difficulty)}`}
+                        >
                           {song.difficulty || "Easy"}
                         </span>
                       </div>
@@ -482,6 +607,21 @@ function SearchPage() {
                         </span>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void toggleFavorite(song.id, !!song.isFavorite);
+                      }}
+                      className={`shrink-0 rounded-full border border-white/10 p-2 transition-colors ${
+                        song.isFavorite
+                          ? "bg-amber-glow/12 text-amber-glow"
+                          : "bg-white/5 text-white/35 hover:text-white/75"
+                      }`}
+                    >
+                      <Heart className={`size-4 ${song.isFavorite ? "fill-current" : ""}`} />
+                    </button>
                   </div>
                 </Link>
               ))}

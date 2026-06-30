@@ -38,6 +38,10 @@ function transposeToken(token: string, semitones: number) {
   return `${transposeRoot(root, semitones)}${rest}`;
 }
 
+function looksLikeChordToken(token: string) {
+  return /^[A-G](?:#|b)?(?:m|maj|min|sus|dim|aug|add|\d|\/|M)?/.test(token);
+}
+
 export function transposeChordLine(line: string, semitones: number) {
   if (!line || !semitones) return line;
   return line
@@ -54,4 +58,21 @@ export function transposeKeyLabel(key: string, semitones: number) {
   const match = key.match(/^([A-G](?:#|b)?)(.*)$/);
   if (!match) return key;
   return `${transposeRoot(match[1], semitones)}${match[2]}`;
+}
+
+export function uniqueTransposedChords(lines: string[], semitones: number) {
+  const unique = new Set<string>();
+
+  lines.forEach((line) => {
+    line
+      .split(/(\s+|\|)/g)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .forEach((chunk) => {
+        if (!looksLikeChordToken(chunk)) return;
+        unique.add(transposeToken(chunk, semitones));
+      });
+  });
+
+  return [...unique];
 }

@@ -1,10 +1,34 @@
 import mongoose from "mongoose";
 
-const PlaylistItemSchema = new mongoose.Schema({
-  songId: { type: String, required: true },
-  partName: String,
-  order: { type: Number, default: 0 },
-}, { _id: true });
+const ArrangementLineSchema = new mongoose.Schema(
+  {
+    type: String,
+    chordLine: String,
+    lyricLine: String,
+  },
+  { _id: false },
+);
+
+const ArrangementSectionSchema = new mongoose.Schema(
+  {
+    sectionId: String,
+    name: String,
+    sourcePartName: String,
+    lines: [ArrangementLineSchema],
+  },
+  { _id: false },
+);
+
+const PlaylistItemSchema = new mongoose.Schema(
+  {
+    songId: { type: String, required: true },
+    partName: String,
+    transpose: { type: Number, default: 0 },
+    arrangement: [ArrangementSectionSchema],
+    order: { type: Number, default: 0 },
+  },
+  { _id: true },
+);
 
 const PlaylistSchema = new mongoose.Schema({
   name: { type: String, required: true },

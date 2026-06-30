@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 
 /**
  * In-memory live state per event room.
- * { [eventId]: { index, scrollTop, scrollPct, progressSpeed, playing, speed, scrollerId, viewers: Map<socketId, user> } }
+ * { [eventId]: { index, scrollTop, scrollPct, progressSpeed, playing, speed, transpose, scrollerId, viewers: Map<socketId, user> } }
  */
 const rooms = new Map();
 let ioRef = null;
@@ -22,6 +22,7 @@ function ensureRoom(eventId) {
       progressSpeed: 0,
       playing: false,
       speed: 1,
+      transpose: 0,
       scrollerId: null,
       viewers: new Map(),
       updatedAt: Date.now(),
@@ -42,6 +43,7 @@ export function getLiveState(eventId) {
     progressSpeed: r.progressSpeed,
     playing: r.playing,
     speed: r.speed,
+    transpose: r.transpose,
     scrollerId: r.scrollerId,
     viewerCount: r.viewers.size,
     viewers: [...r.viewers.values()],
@@ -73,6 +75,7 @@ function snapshot(r) {
     progressSpeed: r.progressSpeed,
     playing: r.playing,
     speed: r.speed,
+    transpose: r.transpose,
     scrollerId: r.scrollerId,
     updatedAt: r.updatedAt,
   };
@@ -175,6 +178,15 @@ export function attachSocket(io) {
         if (typeof playing === "boolean") r.playing = playing;
         if (typeof speed === "number") r.speed = speed;
         if (!r.playing) r.progressSpeed = 0;
+      }),
+    );
+
+    socket.on(
+      "live:transpose",
+      onlyScroller((r, { transpose }) => {
+        if (typeof transpose === "number") {
+          r.transpose = Math.max(-6, Math.min(6, Math.round(transpose)));
+        }
       }),
     );
 

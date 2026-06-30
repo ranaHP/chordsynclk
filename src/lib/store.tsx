@@ -23,6 +23,7 @@ export interface AuthUser {
 
 interface AuthCtx {
   user: AuthUser | null;
+  loading: boolean;
   loginGoogle: () => Promise<void>;
   loginGoogleWithCredential: (credential: string) => Promise<void>;
   registerLocal: (input: {
@@ -93,8 +94,7 @@ function toAuthUser(user: BackendAuthUser): AuthUser {
     name: base.name,
     email: user?.email || "",
     avatar: base.avatar,
-    username:
-      typeof user?.handle === "string" ? String(user.handle).replace(/^@/, "") : undefined,
+    username: typeof user?.handle === "string" ? String(user.handle).replace(/^@/, "") : undefined,
     isAdmin: !!user?.isAdmin,
   };
 }
@@ -106,7 +106,9 @@ function getErrorMessage(error: unknown, fallback: string) {
 export function loadGoogleIdentityScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Browser required"));
   if (window.google?.accounts?.id) return Promise.resolve();
-  if (!GOOGLE_CLIENT_ID) return Promise.reject(new Error("VITE_GOOGLE_CLIENT_ID is missing"));
+  if (!GOOGLE_CLIENT_ID) {
+    return Promise.reject(new Error("VITE_GOOGLE_CLIENT_ID is missing"));
+  }
   if (googleScriptPromise) return googleScriptPromise;
 
   googleScriptPromise = new Promise((resolve, reject) => {
@@ -178,6 +180,7 @@ async function requestGoogleCredential(): Promise<string> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,12 +191,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!API_ENABLED) {
           if (raw) setUser(JSON.parse(raw));
+          if (!cancelled) setLoading(false);
           return;
         }
 
         const token = getToken();
         if (!token) {
           if (raw) localStorage.removeItem(AUTH_KEY);
+          if (!cancelled) setLoading(false);
           return;
         }
 
@@ -207,6 +212,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setToken(null);
         if (typeof window !== "undefined") localStorage.removeItem(AUTH_KEY);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -362,6 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        loading,
         loginGoogle,
         loginGoogleWithCredential,
         registerLocal,
