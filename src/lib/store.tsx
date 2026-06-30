@@ -396,8 +396,8 @@ interface DataCtx {
   events: Event[];
   // groups
   createGroup: (g: Omit<Group, "id" | "inviteLink" | "members"> & { creatorId: string }) => Group;
-  addGroupMember: (groupId: string, userId: string, role?: "Member" | "Scroller") => void;
-  setMemberRole: (groupId: string, userId: string, role: "Member" | "Scroller") => void;
+  addGroupMember: (groupId: string, userId: string, role?: "Sync" | "Self" | "Scroller") => void;
+  setMemberRole: (groupId: string, userId: string, role: "Sync" | "Self" | "Scroller") => void;
   // events
   createEvent: (e: Omit<Event, "id" | "playlists">) => Event;
   // playlists
@@ -483,7 +483,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     save({ ...state, groups: [newGroup, ...state.groups] });
     return newGroup;
   };
-  const addGroupMember: DataCtx["addGroupMember"] = (groupId, userId, role = "Member") => {
+  const addGroupMember: DataCtx["addGroupMember"] = (groupId, userId, role = "Sync") => {
     save({
       ...state,
       groups: state.groups.map((g) =>

@@ -2,10 +2,11 @@ import jwt from "jsonwebtoken";
 
 /**
  * In-memory live state per event room.
- * { [eventId]: { index, scrollTop, scrollPct, progressSpeed, playing, speed, transpose, scrollerId, viewers: Map<socketId, user> } }
+ * { [eventId]: { index, scrollTop, scrollPct, progressSpeed, playing, speed, transpose, scrollerId, pendingScrollerRequest, autoApproveScrollerRequestsRemaining, viewers: Map<socketId, user> } }
  */
 const rooms = new Map();
 let ioRef = null;
+const AUTO_APPROVE_SCROLLER_REQUESTS = 3;
 
 function markUpdated(room) {
   room.updatedAt = Date.now();
@@ -24,6 +25,8 @@ function ensureRoom(eventId) {
       speed: 1,
       transpose: 0,
       scrollerId: null,
+      pendingScrollerRequest: null,
+      autoApproveScrollerRequestsRemaining: AUTO_APPROVE_SCROLLER_REQUESTS,
       viewers: new Map(),
       updatedAt: Date.now(),
     };
@@ -110,7 +113,7 @@ export function attachSocket(io) {
   io.on("connection", (socket) => {
     let currentEvent = null;
 
-    socket.on("live:join", ({ eventId }) => {
+    socket.on("live:join", ({ eventId, role }) => {
       if (!eventId) return;
       if (currentEvent) leave();
       currentEvent = eventId;
@@ -122,8 +125,9 @@ export function attachSocket(io) {
         email: socket.user.email,
         socketId: socket.id,
       });
-      // Auto-assign first viewer as scroller
-      if (!r.scrollerId) r.scrollerId = socket.user.sub;
+      if (!r.scrollerId && role === "Scroller") {
+        r.scrollerId = socket.user.sub;
+      }
       io.to(`event:${eventId}`).emit("live:state", snapshot(r));
       emitViewerJoined(io, eventId, {
         id: socket.user.sub,
@@ -138,8 +142,79 @@ export function attachSocket(io) {
       if (!currentEvent) return;
       const r = ensureRoom(currentEvent);
       r.scrollerId = socket.user.sub;
+      r.pendingScrollerRequest = null;
       markUpdated(r);
       io.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
+    });
+
+    socket.on("live:request-scroller", () => {
+      if (!currentEvent) return;
+      const r = ensureRoom(currentEvent);
+      if (!r.scrollerId || r.scrollerId === socket.user.sub) return;
+
+      const requester = {
+        id: socket.user.sub,
+        name: socket.user.name,
+        email: socket.user.email,
+        socketId: socket.id,
+      };
+
+      if (r.autoApproveScrollerRequestsRemaining > 0) {
+        r.scrollerId = requester.id;
+        r.pendingScrollerRequest = null;
+        r.autoApproveScrollerRequestsRemaining -= 1;
+        markUpdated(r);
+
+        io.to(`event:${currentEvent}`).emit("live:scroller-request-resolved", {
+          approved: true,
+          requester,
+          autoApproved: true,
+          ts: Date.now(),
+        });
+        io.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
+        return;
+      }
+
+      r.pendingScrollerRequest = {
+        requester,
+        ts: Date.now(),
+      };
+      markUpdated(r);
+
+      const currentScrollerViewer = [...r.viewers.values()].find(
+        (viewer) => viewer.id === r.scrollerId,
+      );
+      if (currentScrollerViewer) {
+        io.to(currentScrollerViewer.socketId).emit(
+          "live:scroller-request",
+          r.pendingScrollerRequest,
+        );
+      }
+    });
+
+    socket.on("live:respond-scroller-request", ({ approved, requesterId }) => {
+      if (!currentEvent) return;
+      const r = ensureRoom(currentEvent);
+      if (r.scrollerId !== socket.user.sub) return;
+      if (!r.pendingScrollerRequest) return;
+      if (requesterId && r.pendingScrollerRequest.requester.id !== requesterId) return;
+
+      const pending = r.pendingScrollerRequest;
+      if (approved) {
+        r.scrollerId = pending.requester.id;
+      }
+      r.pendingScrollerRequest = null;
+      markUpdated(r);
+
+      io.to(`event:${currentEvent}`).emit("live:scroller-request-resolved", {
+        approved: !!approved,
+        requester: pending.requester,
+        ts: Date.now(),
+      });
+
+      if (approved) {
+        io.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
+      }
     });
 
     const onlyScroller = (fn) => (payload) => {
@@ -199,7 +274,11 @@ export function attachSocket(io) {
         if (r.scrollerId === socket.user.sub) {
           const next = [...r.viewers.values()][0];
           r.scrollerId = next ? next.id : null;
+          r.pendingScrollerRequest = null;
           io.to(`event:${currentEvent}`).emit("live:state", snapshot(r));
+        }
+        if (r.pendingScrollerRequest?.requester.socketId === socket.id) {
+          r.pendingScrollerRequest = null;
         }
         broadcastViewers(io, currentEvent);
         if (r.viewers.size === 0) rooms.delete(currentEvent);

@@ -163,7 +163,7 @@ function GroupDetail() {
     setAddingMemberId(userId);
     try {
       if (API_ENABLED) {
-        const res = await api.addMember(group.id, userId, "Member");
+        const res = await api.addMember(group.id, userId, "Sync");
         setGroup(normalizeGroup(res.group));
       } else {
         local.addGroupMember(group.id, userId);
@@ -176,7 +176,7 @@ function GroupDetail() {
     }
   };
 
-  const changeRole = async (userId: string, role: "Member" | "Scroller") => {
+  const changeRole = async (userId: string, role: "Sync" | "Self" | "Scroller") => {
     if (!group || roleUpdatingId) return;
     setRoleUpdatingId(userId);
     try {
@@ -314,7 +314,7 @@ function GroupDetail() {
         </div>
       </div>
 
-      <div className="max-w-6xl px-4 py-8 grid lg:grid-cols-[1.15fr_0.85fr] gap-8  ">
+      <div className="max-w-6xl px-4 py-8 grid lg:grid-cols-[1.15fr_0.85fr] gap-8 mx-auto ">
         <section className="space-y-4 ">
           <div className="flex items-end justify-between gap-4  ">
             <div>
@@ -407,7 +407,9 @@ function GroupDetail() {
           <div className="flex items-end justify-between gap-3">
             <div>
               <h3 className="text-2xl font-black">Members</h3>
-              <p className="text-sm text-white/40">Assign roles and manage scrollers.</p>
+              <p className="text-sm text-white/40">
+                Assign live roles for synced or self-controlled stage mode.
+              </p>
             </div>
             <button
               onClick={() => setAddOpen(true)}
@@ -439,20 +441,27 @@ function GroupDetail() {
                     <p className="text-[10px] text-white/40">{memberUser.handle}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {member.role === "Scroller" && (
-                      <span className="px-2 py-1 rounded-full bg-amber-glow/10 text-amber-glow text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
-                        <ShieldCheck className="size-3" /> Scroller
-                      </span>
-                    )}
+                    <span
+                      className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${
+                        member.role === "Scroller"
+                          ? "bg-amber-glow/10 text-amber-glow"
+                          : member.role === "Self"
+                            ? "bg-sky-400/10 text-sky-300"
+                            : "bg-white/8 text-white/65"
+                      }`}
+                    >
+                      <ShieldCheck className="size-3" /> {member.role}
+                    </span>
                     <select
                       value={member.role}
                       onChange={(e) =>
-                        changeRole(member.userId, e.target.value as "Member" | "Scroller")
+                        changeRole(member.userId, e.target.value as "Sync" | "Self" | "Scroller")
                       }
                       disabled={roleUpdatingId === member.userId}
                       className="text-[10px] bg-white/5 border border-white/10 rounded-md px-1.5 py-1 font-bold uppercase tracking-wider"
                     >
-                      <option value="Member">Member</option>
+                      <option value="Sync">Sync</option>
+                      <option value="Self">Self</option>
                       <option value="Scroller">Scroller</option>
                     </select>
                   </div>

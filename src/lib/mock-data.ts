@@ -51,7 +51,7 @@ export interface Group {
   name: string;
   description: string;
   image: string;
-  members: { userId: string; role: "Member" | "Scroller" }[];
+  members: { userId: string; role: "Scroller" | "Sync" | "Self" }[];
   inviteLink: string;
 }
 

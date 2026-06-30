@@ -29,7 +29,7 @@ export function normalizeGroup(g: any) {
     image: g?.image || `https://picsum.photos/seed/${encodeURIComponent(id || "group")}/800/800`,
     members: (g?.members || []).map((m: any) => ({
       userId: docId(m?.userId) || m?.userId,
-      role: m?.role === "Owner" ? "Scroller" : m?.role || "Member",
+      role: m?.role === "Owner" ? "Scroller" : m?.role === "Member" ? "Sync" : m?.role || "Sync",
     })),
     inviteLink:
       g?.inviteLink ||

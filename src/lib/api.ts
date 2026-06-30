@@ -182,7 +182,7 @@ export const api = {
     request<GroupResponse>(`/api/groups/join/${encodeURIComponent(inviteCode)}`, {
       method: "POST",
     }),
-  addMember: (id: string, userId: string, role = "Member") =>
+  addMember: (id: string, userId: string, role = "Sync") =>
     request<GroupResponse>(`/api/groups/${id}/members`, {
       method: "POST",
       body: JSON.stringify({ userId, role }),

@@ -4,7 +4,7 @@ import { useAppSettings } from "@/lib/app-settings";
 import { transposeKeyLabel, uniqueTransposedChords } from "@/lib/chords";
 import { useAuth, useData, USERS } from "@/lib/store";
 import { useLiveSync } from "@/lib/use-live-sync";
-import { normalizeEvent, normalizeSong } from "@/lib/view-models";
+import { normalizeEvent, normalizeGroup, normalizeSong } from "@/lib/view-models";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
@@ -29,6 +29,7 @@ export const Route = createFileRoute("/live/$eventId")({
 });
 
 type ViewEvent = ReturnType<typeof normalizeEvent>;
+type ViewGroup = ReturnType<typeof normalizeGroup>;
 type ViewSong = ReturnType<typeof normalizeSong>;
 type ArrangementSectionLike = {
   name?: string;
@@ -136,6 +137,7 @@ function LivePage() {
     (localEvent as ViewEvent | null) || null,
   );
   const [songsData, setSongsData] = useState<ViewSong[]>([]);
+  const [groupsData, setGroupsData] = useState<ViewGroup[]>(local.groups.map(normalizeGroup));
   const [loading, setLoading] = useState(API_ENABLED);
   const [error, setError] = useState("");
   const [scrolling, setScrolling] = useState(false);
@@ -146,6 +148,8 @@ function LivePage() {
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const [fontSizeStep, setFontSizeStep] = useState(0);
   const [readerToolsOpen, setReaderToolsOpen] = useState(false);
+  const [roleBusy, setRoleBusy] = useState(false);
+  const [scrollerRequestNotice, setScrollerRequestNotice] = useState("");
   const [celebration, setCelebration] = useState<{ name: string; ts: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -155,6 +159,14 @@ function LivePage() {
   const lastScrollEmitAt = useRef(0);
   const remoteBasePctRef = useRef(0);
   const remoteBaseTimeRef = useRef(0);
+  const currentGroup = useMemo(
+    () => groupsData.find((group) => group.id === eventData?.groupId) || null,
+    [eventData?.groupId, groupsData],
+  );
+  const currentMemberRole = useMemo(() => {
+    const role = currentGroup?.members.find((member) => member.userId === user?.id)?.role;
+    return role || "Sync";
+  }, [currentGroup, user?.id]);
 
   const {
     connected,
@@ -163,12 +175,15 @@ function LivePage() {
     viewerCount,
     joinEvent,
     stageChange,
-    takeScroller,
+    scrollerRequest,
+    scrollerRequestResolved,
+    requestScroller,
+    respondScrollerRequest,
     setIndex,
     sendScroll,
     setPlayback,
     setTranspose: syncTranspose,
-  } = useLiveSync({ eventId });
+  } = useLiveSync({ eventId, role: currentMemberRole });
 
   const items = useMemo(
     () => eventData?.playlists.flatMap((playlist) => playlist.items) ?? [],
@@ -226,16 +241,45 @@ function LivePage() {
   }, [loadStageData]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadGroups() {
+      if (!API_ENABLED) {
+        setGroupsData(local.groups.map(normalizeGroup));
+        return;
+      }
+
+      try {
+        const res = await api.listGroups();
+        if (cancelled) return;
+        setGroupsData((res.groups || []).map(normalizeGroup));
+      } catch {
+        if (cancelled) return;
+      }
+    }
+
+    void loadGroups();
+    return () => {
+      cancelled = true;
+    };
+  }, [local.groups]);
+
+  useEffect(() => {
     if (!stageChange) return;
     void loadStageData({ silent: true });
   }, [loadStageData, stageChange]);
+  const canTakeScroll = currentMemberRole === "Scroller" && !isScroller;
+  const canUseGlobalStage = currentMemberRole === "Scroller" && isScroller;
+  const canUseLocalStage = currentMemberRole === "Self";
+  const canControlPlayback = canUseGlobalStage || canUseLocalStage;
+  const followsScroller = currentMemberRole !== "Self" && connected && !isScroller;
 
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || currentMemberRole === "Self") return;
     setScrolling(liveState.playing);
     setSpeed(liveState.speed || 1);
     setTranspose(Math.max(-6, Math.min(6, liveState.transpose || 0)));
-  }, [connected, liveState.playing, liveState.speed, liveState.transpose]);
+  }, [connected, currentMemberRole, liveState.playing, liveState.speed, liveState.transpose]);
 
   useEffect(() => {
     if (!joinEvent || joinEvent.user.id === user?.id) return;
@@ -300,7 +344,7 @@ function LivePage() {
   }, [effectiveFullscreen]);
 
   useEffect(() => {
-    if (!scrolling || !isScroller) return;
+    if (!scrolling || !canControlPlayback) return;
     let last = performance.now();
     const tick = (time: number) => {
       const dt = time - last;
@@ -316,10 +360,10 @@ function LivePage() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isScroller, scrolling, speed]);
+  }, [canControlPlayback, scrolling, speed]);
 
   useEffect(() => {
-    if (!isScroller || !connected) return;
+    if (!canUseGlobalStage || !connected) return;
     const element = scrollRef.current;
     if (!element) return;
     let pending = false;
@@ -339,7 +383,7 @@ function LivePage() {
     };
     element.addEventListener("scroll", onScroll, { passive: true });
     return () => element.removeEventListener("scroll", onScroll);
-  }, [activeIndex, connected, isScroller, scrolling, sendScroll, speed]);
+  }, [activeIndex, canUseGlobalStage, connected, scrolling, sendScroll, speed]);
 
   useEffect(() => {
     remoteBasePctRef.current = liveState.scrollPct || 0;
@@ -347,7 +391,7 @@ function LivePage() {
   }, [liveState.scrollPct, liveState.updatedAt]);
 
   useEffect(() => {
-    if (isScroller || !connected) return;
+    if (!followsScroller) return;
     const element = scrollRef.current;
     if (!element) return;
 
@@ -376,10 +420,10 @@ function LivePage() {
     return () => {
       if (followerFrameRef.current) cancelAnimationFrame(followerFrameRef.current);
     };
-  }, [activeIndex, connected, isScroller, liveState.playing, liveState.progressSpeed]);
+  }, [activeIndex, followsScroller, liveState.playing, liveState.progressSpeed]);
 
   const goIndex = (index: number) => {
-    if (!isScroller) return;
+    if (!canUseGlobalStage) return;
     const itemId = items[index]?.id || null;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
     if (connected) setIndex(index, itemId);
@@ -389,16 +433,16 @@ function LivePage() {
   };
 
   const togglePlay = () => {
-    if (!isScroller) return;
+    if (!canControlPlayback) return;
     const next = !scrolling;
     setScrolling(next);
-    if (connected) setPlayback(next, speed);
+    if (connected && canUseGlobalStage) setPlayback(next, speed);
   };
 
   const changeSpeed = (delta: number) => {
     const next = Math.min(8, Math.max(0.1, +(speed + delta).toFixed(2)));
     setSpeed(next);
-    if (connected && isScroller) setPlayback(scrolling, next);
+    if (connected && canUseGlobalStage) setPlayback(scrolling, next);
   };
 
   const changeFontSize = (delta: -1 | 1) => {
@@ -406,9 +450,42 @@ function LivePage() {
   };
 
   const onTakeScroller = () => {
-    if (!user) return;
-    if (connected) takeScroller();
+    if (!user || currentMemberRole !== "Scroller") return;
+    if (connected) requestScroller();
     else local.requestScroller(user.id);
+  };
+
+  const updateMyRole = async (nextRole: "Sync" | "Self" | "Scroller") => {
+    if (!currentGroup || !user || roleBusy) return;
+    setRoleBusy(true);
+    setError("");
+    try {
+      if (API_ENABLED) {
+        const res = await api.setMemberRole(currentGroup.id, user.id, nextRole);
+        const nextGroup = normalizeGroup(res.group);
+        setGroupsData((current) =>
+          current.map((group) => (group.id === nextGroup.id ? nextGroup : group)),
+        );
+      } else {
+        local.setMemberRole(currentGroup.id, user.id, nextRole);
+        setGroupsData((current) =>
+          current.map((group) =>
+            group.id === currentGroup.id
+              ? {
+                  ...group,
+                  members: group.members.map((member) =>
+                    member.userId === user.id ? { ...member, role: nextRole } : member,
+                  ),
+                }
+              : group,
+          ),
+        );
+      }
+    } catch (roleError: unknown) {
+      setError(getErrorMessage(roleError, "Failed to update your role"));
+    } finally {
+      setRoleBusy(false);
+    }
   };
 
   const toggleFullscreen = async () => {
@@ -437,6 +514,17 @@ function LivePage() {
     setIsPseudoFullscreen((current) => !current);
   };
 
+  useEffect(() => {
+    if (!scrollerRequestResolved || scrollerRequestResolved.requester.id !== user?.id) return;
+    setScrollerRequestNotice(
+      scrollerRequestResolved.approved
+        ? "Scroller request approved."
+        : "Scroller request declined.",
+    );
+    const timeout = window.setTimeout(() => setScrollerRequestNotice(""), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [scrollerRequestResolved, user?.id]);
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-white/60">
@@ -464,14 +552,14 @@ function LivePage() {
   const activeTransposeRoot = song ? parseSongKey(renderedKey)?.root || null : null;
 
   const selectTransposeRoot = (targetRoot: string) => {
-    if (!songKeyParts || !isScroller) return;
+    if (!songKeyParts || (!canUseGlobalStage && currentMemberRole !== "Self")) return;
     const sourceIndex = normalizeEnharmonic(songKeyParts.root);
     const targetIndex = normalizeEnharmonic(targetRoot);
     if (sourceIndex < 0 || targetIndex < 0) return;
     const totalSemitones = ((targetIndex - sourceIndex + 18) % 12) - 6;
     const nextLiveTranspose = Math.max(-6, Math.min(6, totalSemitones - itemBaseTranspose));
     setTranspose(nextLiveTranspose);
-    if (connected) syncTranspose(nextLiveTranspose);
+    if (connected && canUseGlobalStage) syncTranspose(nextLiveTranspose);
   };
 
   const partsToShow = song
@@ -510,6 +598,42 @@ function LivePage() {
       }
     >
       {celebration && <JoinCelebration name={celebration.name} />}
+      {scrollerRequest && canUseGlobalStage && (
+        <div className="absolute inset-x-0 top-16 z-[75] flex justify-center px-4">
+          <div className="w-full max-w-xl rounded-2xl border border-amber-glow/30 bg-stage-card/95 p-4 shadow-2xl backdrop-blur-xl">
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-amber-glow">
+              Scroller Request
+            </p>
+            <p className="mt-2 text-sm text-white">
+              {scrollerRequest.requester.name} wants to become the scroller.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  respondScrollerRequest(true, scrollerRequest.requester.id);
+                  void updateMyRole("Sync");
+                }}
+                className="rounded-xl bg-amber-glow px-3 py-2 text-xs font-bold text-stage-black"
+              >
+                Yes, give scroll
+              </button>
+              <button
+                onClick={() => respondScrollerRequest(false, scrollerRequest.requester.id)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/75"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {scrollerRequestNotice ? (
+        <div className="absolute inset-x-0 top-16 z-[72] flex justify-center px-4">
+          <div className="rounded-full border border-white/10 bg-stage-card/95 px-4 py-2 text-xs font-bold text-white/80 shadow-xl backdrop-blur-xl">
+            {scrollerRequestNotice}
+          </div>
+        </div>
+      ) : null}
 
       <header className="shrink-0 border-b border-white/5 bg-stage-black/90 px-3 py-2.5 backdrop-blur-xl sm:px-6 flex items-center justify-between gap-3">
         <Link
@@ -527,12 +651,23 @@ function LivePage() {
           </p>
           <p className="truncate text-xs text-white/40">
             {Math.min(activeIndex + 1, items.length || 1)} / {items.length} · Scroller:{" "}
-            {scrollerName}
+            {scrollerName} · Role: {currentMemberRole}
           </p>
           {error && <p className="truncate text-[10px] text-amber-glow">{error}</p>}
         </div>
 
         <div className="flex items-center gap-2">
+          <select
+            value={currentMemberRole}
+            onChange={(e) => void updateMyRole(e.target.value as "Sync" | "Self" | "Scroller")}
+            disabled={roleBusy}
+            className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white/75 outline-none sm:block"
+          >
+            <option value="Sync">Sync</option>
+            <option value="Self">Self</option>
+            <option value="Scroller">Scroller</option>
+          </select>
+
           <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest">
             {connected ? (
               <Wifi className="size-3 text-emerald-400" />
@@ -543,16 +678,16 @@ function LivePage() {
             <span>{connected ? viewerCount : 1}</span>
           </div>
 
-          {!isScroller && user && (
+          {canTakeScroll && user && (
             <button
               onClick={onTakeScroller}
-              className="rounded-full border border-neon-sync/30 bg-neon-sync/15 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-neon-sync sm:px-3"
+              className="hidden rounded-full border border-neon-sync/30 bg-neon-sync/15 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-neon-sync sm:inline-flex sm:px-3"
             >
-              Take scroll
+              Request scroll
             </button>
           )}
 
-          {isScroller && (
+          {canUseGlobalStage && (
             <span className="animate-sync rounded-full border border-amber-glow/30 bg-amber-glow/15 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-glow">
               You scroll
             </span>
@@ -606,10 +741,39 @@ function LivePage() {
 
         {readerToolsOpen && (
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <StageControlCard
+              title="Stage Role"
+              subtitle="Choose synced follow, self control, or scroller access"
+              className="sm:hidden"
+            >
+              <div className="space-y-3">
+                <select
+                  value={currentMemberRole}
+                  onChange={(e) =>
+                    void updateMyRole(e.target.value as "Sync" | "Self" | "Scroller")
+                  }
+                  disabled={roleBusy}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-white/80 outline-none"
+                >
+                  <option value="Sync">Sync</option>
+                  <option value="Self">Self</option>
+                  <option value="Scroller">Scroller</option>
+                </select>
+                {canTakeScroll && user ? (
+                  <button
+                    onClick={onTakeScroller}
+                    className="w-full rounded-xl border border-neon-sync/30 bg-neon-sync/15 px-3 py-2 text-xs font-bold uppercase tracking-widest text-neon-sync"
+                  >
+                    Request scroll
+                  </button>
+                ) : null}
+              </div>
+            </StageControlCard>
+
             <StageControlCard title="Transpose" subtitle={`Current key ${renderedKey}`}>
               <TransposeKeyPicker
                 activeRoot={activeTransposeRoot}
-                disabled={!songKeyParts || !isScroller}
+                disabled={!songKeyParts || (!canUseGlobalStage && currentMemberRole !== "Self")}
                 onSelect={selectTransposeRoot}
               />
             </StageControlCard>
@@ -635,7 +799,7 @@ function LivePage() {
 
       <div
         ref={scrollRef}
-        className={`flex-1 overflow-y-auto no-scrollbar ${!isScroller && connected ? "pointer-events-none" : ""}`}
+        className={`flex-1 overflow-y-auto no-scrollbar ${followsScroller ? "pointer-events-none" : ""}`}
       >
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-12">
           {!song && (
@@ -680,14 +844,14 @@ function LivePage() {
       <footer className="shrink-0 border-t border-white/10 bg-stage-black/95 px-3 py-3 backdrop-blur-xl pb-[env(safe-area-inset-bottom)] sm:px-6 flex items-center gap-2 sm:gap-4">
         <button
           onClick={() => goIndex(Math.max(0, activeIndex - 1))}
-          disabled={!isScroller || activeIndex === 0}
+          disabled={!canUseGlobalStage || activeIndex === 0}
           className="size-10 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 disabled:opacity-30"
         >
           <ChevronLeft className="size-5" />
         </button>
         <button
           onClick={togglePlay}
-          disabled={!isScroller || !song}
+          disabled={!canUseGlobalStage || !song}
           className="glow-amber size-12 rounded-full bg-amber-glow text-stage-black flex items-center justify-center active:scale-95 disabled:opacity-40"
         >
           {scrolling ? <Pause className="size-5" /> : <Play className="ml-0.5 size-5" />}
@@ -720,7 +884,7 @@ function LivePage() {
         </div>
         <button
           onClick={() => goIndex(Math.min(items.length - 1, activeIndex + 1))}
-          disabled={!isScroller || activeIndex >= items.length - 1}
+          disabled={!canUseGlobalStage || activeIndex >= items.length - 1}
           className="size-10 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 disabled:opacity-30"
         >
           <ChevronRight className="size-5" />

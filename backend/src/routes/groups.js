@@ -119,7 +119,7 @@ router.delete("/:id", loadGroup, async (req, res, next) => {
 router.post("/:id/members", loadGroup, async (req, res, next) => {
   try {
     if (!isMember(req)) return res.status(403).json({ error: "Forbidden" });
-    const { userId, role = "Member" } = req.body || {};
+    const { userId, role = "Sync" } = req.body || {};
     if (!userId) return res.status(400).json({ error: "userId required" });
     if (req.group.members.some((m) => m.userId.toString() === userId)) {
       return res.status(409).json({ error: "Already a member" });
@@ -168,7 +168,7 @@ router.post("/join/:inviteCode", async (req, res, next) => {
     const group = await Group.findOne({ inviteCode: req.params.inviteCode });
     if (!group) return res.status(404).json({ error: "Invalid invite" });
     if (!group.members.some((m) => m.userId.toString() === req.user.sub)) {
-      group.members.push({ userId: req.user.sub, role: "Member" });
+      group.members.push({ userId: req.user.sub, role: "Sync" });
       await group.save();
     }
     invalidateTags(["groups", `group:${group.id}`, "users"]);

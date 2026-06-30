@@ -26,6 +26,17 @@ export interface LiveJoinEvent {
   ts: number;
 }
 
+export interface LiveScrollerRequest {
+  requester: LiveViewer;
+  ts: number;
+}
+
+export interface LiveScrollerRequestResolved {
+  approved: boolean;
+  requester: LiveViewer;
+  ts: number;
+}
+
 export interface LiveStageChangeEvent {
   eventId: string;
   reason?: string;
@@ -35,6 +46,7 @@ export interface LiveStageChangeEvent {
 interface UseLiveSyncOptions {
   eventId: string;
   enabled?: boolean;
+  role?: string;
 }
 
 /**
@@ -45,7 +57,7 @@ interface UseLiveSyncOptions {
  *
  * If VITE_API_URL is not set, returns a no-op shape so the page still renders with mock data.
  */
-export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
+export function useLiveSync({ eventId, enabled = true, role }: UseLiveSyncOptions) {
   const [connected, setConnected] = useState(false);
   const [state, setState] = useState<LiveState>({
     index: 0,
@@ -62,6 +74,9 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
   const [viewers, setViewers] = useState<LiveViewer[]>([]);
   const [joinEvent, setJoinEvent] = useState<LiveJoinEvent | null>(null);
   const [stageChange, setStageChange] = useState<LiveStageChangeEvent | null>(null);
+  const [scrollerRequest, setScrollerRequest] = useState<LiveScrollerRequest | null>(null);
+  const [scrollerRequestResolved, setScrollerRequestResolved] =
+    useState<LiveScrollerRequestResolved | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -74,20 +89,25 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
 
     s.on("connect", () => {
       setConnected(true);
-      s.emit("live:join", { eventId });
+      s.emit("live:join", { eventId, role });
     });
     s.on("disconnect", () => setConnected(false));
     s.on("live:state", (st: LiveState) => setState((prev) => ({ ...prev, ...st })));
     s.on("live:viewers", ({ users }: { count: number; users: LiveViewer[] }) => setViewers(users));
     s.on("live:viewer-joined", (event: LiveJoinEvent) => setJoinEvent(event));
     s.on("live:stage-changed", (event: LiveStageChangeEvent) => setStageChange(event));
+    s.on("live:scroller-request", (event: LiveScrollerRequest) => setScrollerRequest(event));
+    s.on("live:scroller-request-resolved", (event: LiveScrollerRequestResolved) => {
+      setScrollerRequest(null);
+      setScrollerRequestResolved(event);
+    });
 
     return () => {
       s.emit("live:leave");
       s.disconnect();
       socketRef.current = null;
     };
-  }, [eventId, enabled]);
+  }, [eventId, enabled, role]);
 
   const emit = useCallback((event: string, payload?: unknown) => {
     socketRef.current?.emit(event, payload);
@@ -99,8 +119,16 @@ export function useLiveSync({ eventId, enabled = true }: UseLiveSyncOptions) {
     viewers,
     joinEvent,
     stageChange,
+    scrollerRequest,
+    scrollerRequestResolved,
     viewerCount: viewers.length,
     takeScroller: useCallback(() => emit("live:take-scroller"), [emit]),
+    requestScroller: useCallback(() => emit("live:request-scroller"), [emit]),
+    respondScrollerRequest: useCallback(
+      (approved: boolean, requesterId?: string) =>
+        emit("live:respond-scroller-request", { approved, requesterId }),
+      [emit],
+    ),
     setIndex: useCallback(
       (index: number, itemId?: string | null) => emit("live:index", { index, itemId }),
       [emit],
