@@ -17,6 +17,7 @@ import {
   Play,
   Plus,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 
 export const Route = createFileRoute("/songs/$songId")({
@@ -438,7 +439,7 @@ function SongPage() {
                 </div>
               </div>
 
-              <div className="border-t border-white/8 bg-white/[0.025] px-5 py-5 sm:px-6 lg:border-l lg:border-t-0">
+              {/* <div className="border-t border-white/8 bg-white/[0.025] px-5 py-5 sm:px-6 lg:border-l lg:border-t-0">
                 <div className="grid gap-4">
                   <ControlCard title="Reading Size" subtitle="Use any size you need">
                     <div className="flex items-center gap-2">
@@ -514,7 +515,7 @@ function SongPage() {
                     </div>
                   </ControlCard>
                 </div>
-              </div>
+              </div> */}
             </div>
           </section>
         )}
@@ -635,12 +636,26 @@ function SongPage() {
 
               <button
                 onClick={() => setReaderToolsOpen((current) => !current)}
-                className={`flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold ${
-                  readerToolsOpen ? "bg-white/10 text-white" : "text-white/70 hover:text-white"
+                className={`flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold transition-all duration-200 ${
+                  readerToolsOpen
+                    ? "bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
+                    : "text-white/70 hover:bg-white/5 hover:text-white"
                 }`}
+                aria-label={readerToolsOpen ? "Close settings" : "Open settings"}
               >
-                <SlidersHorizontal className="size-3.5" />
-                Display
+                <span className="relative flex size-3.5 items-center justify-center">
+                  <SlidersHorizontal
+                    className={`absolute size-3.5 transition-all duration-200 ${
+                      readerToolsOpen ? "scale-75 rotate-90 opacity-0" : "scale-100 opacity-100"
+                    }`}
+                  />
+                  <X
+                    className={`absolute size-3.5 transition-all duration-200 ${
+                      readerToolsOpen ? "scale-100 opacity-100" : "scale-75 rotate-90 opacity-0"
+                    }`}
+                  />
+                </span>
+                {readerToolsOpen ? "Setting Close" : "Setting"}
               </button>
 
               <button

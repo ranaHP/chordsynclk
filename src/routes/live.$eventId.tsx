@@ -3,6 +3,7 @@ import { api, API_ENABLED } from "@/lib/api";
 import { useAppSettings } from "@/lib/app-settings";
 import { transposeKeyLabel, uniqueTransposedChords } from "@/lib/chords";
 import { useAuth, useData, USERS } from "@/lib/store";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useLiveSync } from "@/lib/use-live-sync";
 import { normalizeEvent, normalizeGroup, normalizeSong } from "@/lib/view-models";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,6 +22,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
+import { Field, Modal, inputCls } from "./groups";
 import { SongPartBlock, type FontScale } from "./songs.$songId";
 
 export const Route = createFileRoute("/live/$eventId")({
@@ -86,6 +88,13 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function normalizeStageRole(role?: string | null) {
+  if (role === "Owner") return "Scroller";
+  if (role === "Member") return "Sync";
+  if (role === "Scroller" || role === "Self" || role === "Sync") return role;
+  return "Sync";
+}
+
 function isFullSongPartName(value?: string | null) {
   if (!value) return true;
   const normalized = value
@@ -116,6 +125,19 @@ function buildSongLookup(songs: ViewSong[]) {
       .forEach((key) => lookup.set(String(key), song));
   });
   return lookup;
+}
+
+function getSongChordPreview(song: ViewSong) {
+  const chords = Array.from(
+    new Set(
+      song.parts
+        .flatMap((part) => part.chords.split(/\s+/))
+        .map((chord) => chord.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return chords.slice(0, 10).join(" · ") || song.key || "-";
 }
 
 function shouldUsePseudoFullscreen() {
@@ -151,21 +173,34 @@ function LivePage() {
   const [roleBusy, setRoleBusy] = useState(false);
   const [scrollerRequestNotice, setScrollerRequestNotice] = useState("");
   const [celebration, setCelebration] = useState<{ name: string; ts: number } | null>(null);
+  const [stagePlaylistToolsOpen, setStagePlaylistToolsOpen] = useState(false);
+  const [liveSongPickerOpen, setLiveSongPickerOpen] = useState(false);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [songQ, setSongQ] = useState("");
+  const [songPage, setSongPage] = useState(1);
+  const [songPages, setSongPages] = useState(1);
+  const [songTotal, setSongTotal] = useState(0);
+  const [songLoading, setSongLoading] = useState(false);
+  const [librarySongs, setLibrarySongs] = useState<ViewSong[]>([]);
+  const [partChoice, setPartChoice] = useState("Full Song");
+  const [playlistBusyKey, setPlaylistBusyKey] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const applyingRemoteScroll = useRef(false);
   const followerFrameRef = useRef<number | null>(null);
+  const followerSyncTimeoutRef = useRef<number | null>(null);
   const lastScrollEmitAt = useRef(0);
   const remoteBasePctRef = useRef(0);
   const remoteBaseTimeRef = useRef(0);
+  const debouncedSongQ = useDebouncedValue(songQ, 250);
   const currentGroup = useMemo(
     () => groupsData.find((group) => group.id === eventData?.groupId) || null,
     [eventData?.groupId, groupsData],
   );
   const currentMemberRole = useMemo(() => {
     const role = currentGroup?.members.find((member) => member.userId === user?.id)?.role;
-    return role || "Sync";
+    return normalizeStageRole(role);
   }, [currentGroup, user?.id]);
 
   const {
@@ -177,6 +212,7 @@ function LivePage() {
     stageChange,
     scrollerRequest,
     scrollerRequestResolved,
+    takeScroller,
     requestScroller,
     respondScrollerRequest,
     setIndex,
@@ -189,6 +225,20 @@ function LivePage() {
     () => eventData?.playlists.flatMap((playlist) => playlist.items) ?? [],
     [eventData],
   );
+  const playlistMeta = useMemo(() => {
+    let start = 0;
+    return (eventData?.playlists || []).map((playlist) => {
+      const count = playlist.items.length;
+      const meta = {
+        playlist,
+        start,
+        end: start + Math.max(0, count - 1),
+        count,
+      };
+      start += count;
+      return meta;
+    });
+  }, [eventData]);
   const songMap = useMemo(() => buildSongLookup(songsData), [songsData]);
   const remoteScrollerId = liveState.scrollerId;
   const activeIndex = useMemo(() => {
@@ -207,6 +257,15 @@ function LivePage() {
   const fontSizeMultiplier = Math.max(0.4, baseStageMultiplier + fontSizeStep * 0.08);
 
   const current = items[activeIndex];
+  const activePlaylistMeta = useMemo(
+    () =>
+      playlistMeta.find((entry) =>
+        entry.count > 0 ? activeIndex >= entry.start && activeIndex <= entry.end : false,
+      ) ||
+      playlistMeta[0] ||
+      null,
+    [activeIndex, playlistMeta],
+  );
   const song = current ? songMap.get(current.songId) : null;
   const prevSong = activeIndex > 0 ? songMap.get(items[activeIndex - 1]?.songId) : null;
   const nextSong = items[activeIndex + 1] ? songMap.get(items[activeIndex + 1]?.songId) : null;
@@ -268,11 +327,59 @@ function LivePage() {
     if (!stageChange) return;
     void loadStageData({ silent: true });
   }, [loadStageData, stageChange]);
+
+  useEffect(() => {
+    setSelectedPlaylistId((current) => {
+      if (current && playlistMeta.some((entry) => entry.playlist.id === current)) return current;
+      return activePlaylistMeta?.playlist.id || playlistMeta[0]?.playlist.id || null;
+    });
+  }, [activePlaylistMeta, playlistMeta]);
+
+  useEffect(() => {
+    if (!liveSongPickerOpen) return;
+    setSongPage(1);
+  }, [debouncedSongQ, liveSongPickerOpen]);
+
+  useEffect(() => {
+    if (!liveSongPickerOpen || !API_ENABLED) return;
+    let cancelled = false;
+
+    async function loadSongPicker() {
+      setSongLoading(true);
+      try {
+        const res = await api.listSongs(
+          debouncedSongQ,
+          "",
+          songPage,
+          8,
+          {},
+          { sort: "title", content: "summary" },
+        );
+        if (cancelled) return;
+        setLibrarySongs((res.songs || []).map(normalizeSong));
+        setSongPage(res.page || 1);
+        setSongPages(res.pages || 1);
+        setSongTotal(res.total || 0);
+      } catch {
+        if (cancelled) return;
+        setLibrarySongs([]);
+      } finally {
+        if (!cancelled) setSongLoading(false);
+      }
+    }
+
+    void loadSongPicker();
+    return () => {
+      cancelled = true;
+    };
+  }, [API_ENABLED, debouncedSongQ, liveSongPickerOpen, songPage]);
+
   const canTakeScroll = currentMemberRole === "Scroller" && !isScroller;
   const canUseGlobalStage = currentMemberRole === "Scroller" && isScroller;
   const canUseLocalStage = currentMemberRole === "Self";
   const canControlPlayback = canUseGlobalStage || canUseLocalStage;
   const followsScroller = currentMemberRole !== "Self" && connected && !isScroller;
+  const canOpenStagePlaylistTools = Boolean(user && currentGroup);
 
   useEffect(() => {
     if (!connected || currentMemberRole === "Self") return;
@@ -280,6 +387,13 @@ function LivePage() {
     setSpeed(liveState.speed || 1);
     setTranspose(Math.max(-6, Math.min(6, liveState.transpose || 0)));
   }, [connected, currentMemberRole, liveState.playing, liveState.speed, liveState.transpose]);
+
+  useEffect(() => {
+    if (!connected) return;
+    if (currentMemberRole !== "Scroller") return;
+    if (liveState.scrollerId) return;
+    takeScroller();
+  }, [connected, currentMemberRole, liveState.scrollerId, takeScroller]);
 
   useEffect(() => {
     if (!joinEvent || joinEvent.user.id === user?.id) return;
@@ -390,29 +504,76 @@ function LivePage() {
     remoteBaseTimeRef.current = liveState.updatedAt || Date.now();
   }, [liveState.scrollPct, liveState.updatedAt]);
 
-  useEffect(() => {
-    if (!followsScroller) return;
-    const element = scrollRef.current;
-    if (!element) return;
+  const syncFollowerToLiveState = useCallback(
+    (behavior: "smooth" | "snap" = "snap") => {
+      if (!followsScroller) return;
+      const element = scrollRef.current;
+      if (!element) return;
 
-    const step = () => {
       const max = Math.max(0, element.scrollHeight - element.clientHeight);
       const elapsed = liveState.playing ? Math.max(0, Date.now() - remoteBaseTimeRef.current) : 0;
       const targetPct = Math.max(
         0,
         Math.min(1, remoteBasePctRef.current + (elapsed / 1000) * (liveState.progressSpeed || 0)),
       );
-      const target = Math.min(max, targetPct * max);
-      const delta = target - element.scrollTop;
+      const targetFromPct = Math.min(max, targetPct * max);
+      const target = max > 0 ? targetFromPct : Math.max(0, liveState.scrollTop || 0);
 
-      if (Math.abs(delta) > 0.5) {
-        applyingRemoteScroll.current = true;
+      applyingRemoteScroll.current = true;
+      if (behavior === "snap" || Math.abs(target - element.scrollTop) < 1) {
+        element.scrollTop = target;
+      } else {
+        const delta = target - element.scrollTop;
         element.scrollTop += Math.abs(delta) > 64 ? delta * 0.34 : delta * 0.2;
-        requestAnimationFrame(() => {
-          applyingRemoteScroll.current = false;
-        });
       }
+      requestAnimationFrame(() => {
+        applyingRemoteScroll.current = false;
+      });
+    },
+    [followsScroller, liveState.playing, liveState.progressSpeed, liveState.scrollTop],
+  );
 
+  useEffect(() => {
+    if (!followsScroller) return;
+
+    let frameCount = 0;
+    let frameId = 0;
+    const syncAcrossFrames = () => {
+      syncFollowerToLiveState(frameCount === 0 ? "snap" : "smooth");
+      frameCount += 1;
+      if (frameCount < 8) {
+        frameId = requestAnimationFrame(syncAcrossFrames);
+      }
+    };
+
+    frameId = requestAnimationFrame(syncAcrossFrames);
+    followerSyncTimeoutRef.current = window.setTimeout(() => {
+      syncFollowerToLiveState("snap");
+    }, 220);
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      if (followerSyncTimeoutRef.current) {
+        window.clearTimeout(followerSyncTimeoutRef.current);
+        followerSyncTimeoutRef.current = null;
+      }
+    };
+  }, [
+    activeIndex,
+    followsScroller,
+    liveState.itemId,
+    liveState.scrollPct,
+    liveState.scrollTop,
+    liveState.updatedAt,
+    song?.id,
+    syncFollowerToLiveState,
+  ]);
+
+  useEffect(() => {
+    if (!followsScroller) return;
+
+    const step = () => {
+      syncFollowerToLiveState("smooth");
       followerFrameRef.current = requestAnimationFrame(step);
     };
 
@@ -420,7 +581,7 @@ function LivePage() {
     return () => {
       if (followerFrameRef.current) cancelAnimationFrame(followerFrameRef.current);
     };
-  }, [activeIndex, followsScroller, liveState.playing, liveState.progressSpeed]);
+  }, [activeIndex, followsScroller, syncFollowerToLiveState]);
 
   const goIndex = (index: number) => {
     if (!canUseGlobalStage) return;
@@ -430,6 +591,37 @@ function LivePage() {
     local.setLiveIndex(index);
     setScrolling(false);
     if (connected) setPlayback(false, speed);
+  };
+
+  const goToPlaylist = (playlistId: string) => {
+    const target = playlistMeta.find((entry) => entry.playlist.id === playlistId);
+    if (!target) return;
+    setSelectedPlaylistId(playlistId);
+    if (canUseGlobalStage && target.count > 0) goIndex(target.start);
+  };
+
+  const addSongToStagePlaylist = async (songId: string) => {
+    if (!eventData || !selectedPlaylistId || playlistBusyKey) return;
+    const busyKey = `stage-item:add:${selectedPlaylistId}:${songId}`;
+    setPlaylistBusyKey(busyKey);
+    try {
+      if (API_ENABLED) {
+        const res = await api.addPlaylistItem(eventData.id, selectedPlaylistId, songId, partChoice);
+        setEventData(normalizeEvent(res.event));
+      } else {
+        local.addPlaylistItem(eventData.id, selectedPlaylistId, {
+          songId,
+          partName: partChoice,
+        });
+        setEventData(
+          (local.events.find((entry) => entry.id === eventData.id) as ViewEvent | null) || null,
+        );
+      }
+    } catch (playlistError: unknown) {
+      setError(getErrorMessage(playlistError, "Failed to add song to playlist"));
+    } finally {
+      setPlaylistBusyKey(null);
+    }
   };
 
   const togglePlay = () => {
@@ -728,14 +920,26 @@ function LivePage() {
 
           <button
             onClick={() => setReaderToolsOpen((current) => !current)}
-            className={`flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold ${
+            className={`flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold transition-all duration-200 ${
               readerToolsOpen
-                ? "bg-white/10 text-white"
+                ? "bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
                 : "bg-white/5 text-white/70 hover:text-white"
             }`}
+            aria-label={readerToolsOpen ? "Close settings" : "Open settings"}
           >
-            <SlidersHorizontal className="size-3.5" />
-            Display
+            <span className="relative flex size-3.5 items-center justify-center">
+              <SlidersHorizontal
+                className={`absolute size-3.5 transition-all duration-200 ${
+                  readerToolsOpen ? "scale-75 rotate-90 opacity-0" : "scale-100 opacity-100"
+                }`}
+              />
+              <X
+                className={`absolute size-3.5 transition-all duration-200 ${
+                  readerToolsOpen ? "scale-100 opacity-100" : "scale-75 rotate-90 opacity-0"
+                }`}
+              />
+            </span>
+            {readerToolsOpen ? "Setting Close" : "Setting"}
           </button>
         </div>
 
@@ -890,6 +1094,215 @@ function LivePage() {
           <ChevronRight className="size-5" />
         </button>
       </footer>
+
+      {canOpenStagePlaylistTools ? (
+        <>
+          <button
+            onClick={() => setStagePlaylistToolsOpen((current) => !current)}
+            className="fixed bottom-24 right-4 z-[78] flex size-14 items-center justify-center rounded-full border border-amber-glow/30 bg-amber-glow text-stage-black shadow-[0_20px_45px_rgba(251,191,36,0.35)] transition-transform hover:scale-[1.03] sm:bottom-28 sm:right-6"
+            aria-label={stagePlaylistToolsOpen ? "Close playlist tools" : "Open playlist tools"}
+          >
+            {stagePlaylistToolsOpen ? <X className="size-5" /> : <Plus className="size-5" />}
+          </button>
+
+          {stagePlaylistToolsOpen ? (
+            <div className="fixed bottom-40 right-4 z-[77] w-[min(92vw,26rem)] rounded-[1.6rem] border border-white/10 bg-stage-card/96 p-4 shadow-2xl backdrop-blur-xl sm:bottom-44 sm:right-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-white">Live Playlist Manager</p>
+                  <p className="text-xs text-white/45">
+                    Change playlist and add songs while stage mode is running.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setStagePlaylistToolsOpen(false)}
+                  className="size-8 rounded-lg bg-white/5 text-white/70"
+                >
+                  <X className="mx-auto size-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <Field label="Current playlist">
+                  <select
+                    value={selectedPlaylistId || ""}
+                    onChange={(e) => goToPlaylist(e.target.value)}
+                    className={inputCls}
+                  >
+                    {playlistMeta.map((entry) => (
+                      <option key={entry.playlist.id} value={entry.playlist.id}>
+                        {entry.playlist.name} ({entry.count})
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <div className="max-h-52 space-y-2 overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+                  {playlistMeta.map((entry) => {
+                    const isActive = entry.playlist.id === activePlaylistMeta?.playlist.id;
+                    const isSelected = entry.playlist.id === selectedPlaylistId;
+                    return (
+                      <button
+                        key={entry.playlist.id}
+                        onClick={() => goToPlaylist(entry.playlist.id)}
+                        className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
+                          isActive || isSelected
+                            ? "border-amber-glow/35 bg-amber-glow/10"
+                            : "border-white/8 bg-white/[0.03] hover:bg-white/[0.06]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-white">
+                              {entry.playlist.name}
+                            </p>
+                            <p className="text-xs text-white/45">
+                              {entry.count} item{entry.count === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-white/60">
+                            {isActive ? "Live" : isSelected ? "Selected" : "Open"}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    onClick={() => void loadStageData({ silent: true })}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white/80"
+                  >
+                    Refresh stage
+                  </button>
+                  <button
+                    onClick={() => {
+                      setStagePlaylistToolsOpen(false);
+                      setLiveSongPickerOpen(true);
+                    }}
+                    disabled={!selectedPlaylistId}
+                    className="w-full rounded-xl bg-amber-glow px-4 py-3 text-sm font-bold text-stage-black disabled:opacity-50"
+                  >
+                    Search song and add
+                  </button>
+                </div>
+
+                {!canUseGlobalStage ? (
+                  <p className="text-xs text-white/45">
+                    You can add songs and refresh stage here. Only the current scroller can jump the
+                    live reader to another playlist.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {liveSongPickerOpen ? (
+        <Modal
+          title="Add song to live playlist"
+          onClose={() => setLiveSongPickerOpen(false)}
+          mobileFullscreen
+          desktopPanelClassName="sm:max-w-4xl"
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
+              <Field label="Search songs">
+                <input
+                  value={songQ}
+                  onChange={(e) => setSongQ(e.target.value)}
+                  placeholder="Search title, artist, key..."
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Part">
+                <select
+                  value={partChoice}
+                  onChange={(e) => setPartChoice(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="Full Song">Full Song</option>
+                  <option value="Intro">Intro</option>
+                  <option value="Verse">Verse</option>
+                  <option value="Chorus">Chorus</option>
+                  <option value="Bridge">Bridge</option>
+                  <option value="Outro">Outro</option>
+                </select>
+              </Field>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/55">
+              Adding into:{" "}
+              <span className="font-bold text-white">
+                {playlistMeta.find((entry) => entry.playlist.id === selectedPlaylistId)?.playlist
+                  .name || "Select playlist"}
+              </span>
+            </div>
+
+            <div className="max-h-[28rem] overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+              <div className="grid gap-3 xl:grid-cols-2">
+                {songLoading ? (
+                  <p className="py-3 text-xs text-white/50">Loading songs...</p>
+                ) : null}
+                {librarySongs.map((entry) => (
+                  <button
+                    key={entry.id}
+                    onClick={() => void addSongToStagePlaylist(entry.id)}
+                    disabled={!selectedPlaylistId || Boolean(playlistBusyKey)}
+                    className="flex w-full min-w-0 flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-left transition-colors hover:border-amber-glow/30 hover:bg-white/[0.06] disabled:opacity-60"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-base font-bold">{entry.title}</p>
+                      <p className="truncate text-sm text-white/45">{entry.artist}</p>
+                      <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/30">
+                        Chords Used
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-sm text-white/60">
+                        {getSongChordPreview(entry)}
+                      </p>
+                    </div>
+                    <span className="self-start rounded-full border border-amber-glow/20 bg-amber-glow/10 px-4 py-2 text-xs font-bold text-amber-glow">
+                      {playlistBusyKey === `stage-item:add:${selectedPlaylistId}:${entry.id}`
+                        ? "ADDING..."
+                        : "ADD"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {!librarySongs.length && !songLoading ? (
+                <p className="py-10 text-center text-sm text-white/40">No songs found.</p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-white/8 pt-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-white/45">{songTotal} songs matched</p>
+              <div className="sm:min-w-[320px]">
+                <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-stage-card/60 px-4 py-3">
+                  <button
+                    onClick={() => setSongPage((current) => Math.max(1, current - 1))}
+                    disabled={songPage <= 1 || songLoading}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/70 disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-white/55">
+                    Page {songPage} of {songPages}
+                  </span>
+                  <button
+                    onClick={() => setSongPage((current) => Math.min(songPages, current + 1))}
+                    disabled={songPage >= songPages || songLoading}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/70 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

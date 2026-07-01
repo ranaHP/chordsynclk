@@ -464,10 +464,13 @@ function SearchPage() {
 
             {searchMode && (
               <div className="min-h-0 flex-1 overflow-hidden rounded-[1.3rem] border border-white/10 bg-[#0f1015] p-3 sm:p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/40">
-                    Quick results
-                  </p>
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-[1rem] border border-white/8 bg-white/[0.03] px-3 py-3">
+                  <div>
+                    <p className="text-sm font-black text-white">Browse songs</p>
+                    <p className="mt-1 text-[11px] text-white/40">
+                      Same quick picker style as playlist song loading.
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={clearDraftSearch}
@@ -491,11 +494,11 @@ function SearchPage() {
                     {previewError}
                   </div>
                 ) : previewSongs.length ? (
-                  <div className="-mx-1 max-h-full space-y-1 overflow-y-auto px-1 pb-6">
+                  <div className="max-h-full space-y-2 overflow-y-auto rounded-2xl border border-white/10 p-2 pb-6">
                     {previewSongs.map((song) => (
                       <div
                         key={song.id}
-                        className="flex items-center gap-3 rounded-[1rem] border-b border-white/8 bg-transparent px-2 py-3 last:border-b-0 hover:bg-white/[0.03]"
+                        className="flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-white/5"
                       >
                         <button
                           type="button"
@@ -512,14 +515,13 @@ function SearchPage() {
                           <img
                             src={song.cover}
                             alt={song.title}
-                            className="size-12 shrink-0 rounded-[0.8rem] object-cover"
+                            className="size-12 shrink-0 rounded-xl object-cover"
                           />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-bold text-white">{song.title}</p>
-                            <p className="truncate text-xs text-white/50">{song.artist}</p>
-                          </div>
-                          <div className="text-right text-[11px] text-white/45">
-                            <p>{song.key || "-"}</p>
+                            <p className="truncate text-xs text-white/45">
+                              {song.artist} · {song.key || "-"}
+                            </p>
                           </div>
                         </button>
                         <button
@@ -537,6 +539,10 @@ function SearchPage() {
                     No quick matches. Try fewer filters or a shorter search.
                   </div>
                 )}
+
+                <p className="mt-3 text-[10px] text-white/35">
+                  {previewSongs.length} songs matched
+                </p>
               </div>
             )}
           </div>

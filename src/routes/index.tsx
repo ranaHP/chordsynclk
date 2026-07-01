@@ -5,7 +5,7 @@ import { api, API_ENABLED } from "@/lib/api";
 import { USERS } from "@/lib/mock-data";
 import { useAuth, useData } from "@/lib/store";
 import { normalizeSong } from "@/lib/view-models";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type LucideIcon,
   CircleDot,
@@ -100,11 +100,18 @@ const FLOATING_ORNAMENTS: {
 ];
 
 const STATS = [
-  { icon: Music2, value: "10,000+", label: "Songs" },
-  { icon: Guitar, value: "2,500+", label: "Artists" },
-  { icon: NotebookText, value: "50,000+", label: "Chords" },
-  { icon: UsersIcon, value: "25K+", label: "Users" },
+  { icon: Music2, key: "songs", label: "Songs" },
+  { icon: Guitar, key: "artists", label: "Artists" },
+  { icon: NotebookText, key: "chords", label: "Chords" },
+  { icon: UsersIcon, key: "users", label: "Users" },
 ];
+
+const FALLBACK_STATS = {
+  songs: 0,
+  artists: 0,
+  chords: 0,
+  users: 0,
+};
 
 const FEATURES = [
   { icon: Guitar, label: "Easy to Play" },
@@ -120,32 +127,70 @@ function HomePage() {
   const [topSongs, setTopSongs] = useState<ViewSong[]>([]);
   const [recentSongs, setRecentSongs] = useState<ViewSong[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [statsTarget, setStatsTarget] = useState(FALLBACK_STATS);
+  const [statsDisplay, setStatsDisplay] = useState(FALLBACK_STATS);
+
+  const formatter = useMemo(() => new Intl.NumberFormat("en-US"), []);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadSongs() {
+    async function loadHomeData() {
       if (!API_ENABLED) return;
       try {
-        const [topRes, recentRes] = await Promise.all([
+        const [topRes, recentRes, statsRes] = await Promise.all([
           api.listSongs("", "", 1, 8, {}, { sort: "title" }),
           api.listSongs("", "", 1, 8, {}, { sort: "recent" }),
+          api.getHomeStats(),
         ]);
         if (cancelled) return;
         setTopSongs((topRes.songs || []).map(normalizeSong));
         setRecentSongs((recentRes.songs || []).map(normalizeSong));
+        setStatsTarget({
+          songs: Number(statsRes.stats?.songs || 0),
+          artists: Number(statsRes.stats?.artists || 0),
+          chords: Number(statsRes.stats?.songs || 0),
+          users: Number(statsRes.stats?.users || 0),
+        });
       } catch {
         if (cancelled) return;
         setTopSongs([]);
         setRecentSongs([]);
+        setStatsTarget(FALLBACK_STATS);
       }
     }
 
-    loadSongs();
+    void loadHomeData();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const startValues = { ...statsDisplay };
+    const targetValues = { ...statsTarget };
+    const durationMs = 1400;
+    const startTime = performance.now();
+
+    const frame = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / durationMs);
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      setStatsDisplay({
+        songs: Math.round(startValues.songs + (targetValues.songs - startValues.songs) * eased),
+        artists: Math.round(
+          startValues.artists + (targetValues.artists - startValues.artists) * eased,
+        ),
+        chords: Math.round(startValues.chords + (targetValues.chords - startValues.chords) * eased),
+        users: Math.round(startValues.users + (targetValues.users - startValues.users) * eased),
+      });
+
+      if (progress < 1) requestAnimationFrame(frame);
+    };
+
+    const raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [statsTarget]);
 
   return (
     <div className="min-h-screen bg-[#070812] text-white">
@@ -170,7 +215,9 @@ function HomePage() {
                   <Guitar className="size-6 sm:size-8" />
                 </div>
                 <div className="min-w-0 leading-none">
-                  <p className="text-[1.1rem] font-black tracking-tight text-white sm:text-[1.4rem] pb-1">CHORD</p>
+                  <p className="text-[1.1rem] font-black tracking-tight text-white sm:text-[1.4rem] pb-1">
+                    CHORD
+                  </p>
                   <p className="-mt-1 text-[1.0rem] font-black tracking-tight text-amber-glow sm:text-[1.4rem]">
                     SYNCLK
                   </p>
@@ -200,7 +247,11 @@ function HomePage() {
 
                 {user ? (
                   <div className="hidden items-center gap-3 rounded-full border border-white/15 bg-white/5 px-3 py-2 lg:flex">
-                    <img src={user.avatar} alt={user.name} className="size-10 rounded-full object-cover" />
+                    <img
+                      src={user.avatar}
+                      alt={user.name}
+                      className="size-10 rounded-full object-cover"
+                    />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-white">{user.name}</p>
                       <p className="truncate text-xs text-white/55">{user.email}</p>
@@ -230,7 +281,11 @@ function HomePage() {
                   className="flex size-10 shrink-0 items-center justify-center rounded-[1.05rem] border border-white/12 bg-white/[0.04] text-white transition-colors hover:border-amber-glow/40 hover:text-amber-glow sm:size-12 sm:rounded-2xl lg:hidden"
                   aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
                 >
-                  {mobileMenuOpen ? <X className="size-4 sm:size-5" /> : <Menu className="size-4 sm:size-5" />}
+                  {mobileMenuOpen ? (
+                    <X className="size-4 sm:size-5" />
+                  ) : (
+                    <Menu className="size-4 sm:size-5" />
+                  )}
                 </button>
               </div>
             </div>
@@ -278,7 +333,9 @@ function HomePage() {
                   className="mt-5 flex w-full items-center gap-3 rounded-[1.15rem] border border-white/18 bg-[rgba(9,12,24,0.62)] px-4 py-3 text-left text-white/60 backdrop-blur-md transition-colors hover:border-amber-glow/40 hover:text-white sm:mt-6 sm:rounded-[1.25rem]"
                 >
                   <Search className="size-5 shrink-0 text-amber-glow" />
-                  <span className="truncate text-[0.9rem] sm:text-base">Search songs, artists, chords...</span>
+                  <span className="truncate text-[0.9rem] sm:text-base">
+                    Search songs, artists, chords...
+                  </span>
                 </button>
 
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -299,15 +356,19 @@ function HomePage() {
 
               <div className="relative min-h-[260px] animate-fade-in-soft [animation-delay:220ms] lg:min-h-[560px]  hidden md:block">
                 <div className="pointer-events-none absolute inset-0 hidden md:block">
-                  {FLOATING_ORNAMENTS.map(({ icon: Icon, top, left, delay, size, tone, rotate }) => (
-                    <div
-                      key={`${top}-${left}-${delay}`}
-                      className={`animate-drift-float absolute ${rotate}`}
-                      style={{ top, left, animationDelay: delay }}
-                    >
-                      <Icon className={`${size} ${tone} drop-shadow-[0_0_18px_rgba(251,191,36,0.24)]`} />
-                    </div>
-                  ))}
+                  {FLOATING_ORNAMENTS.map(
+                    ({ icon: Icon, top, left, delay, size, tone, rotate }) => (
+                      <div
+                        key={`${top}-${left}-${delay}`}
+                        className={`animate-drift-float absolute ${rotate}`}
+                        style={{ top, left, animationDelay: delay }}
+                      >
+                        <Icon
+                          className={`${size} ${tone} drop-shadow-[0_0_18px_rgba(251,191,36,0.24)]`}
+                        />
+                      </div>
+                    ),
+                  )}
                 </div>
 
                 <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-end">
@@ -348,13 +409,15 @@ function HomePage() {
           <div className="relative z-10 mt-auto space-y-4 animate-fade-in-soft [animation-delay:340ms] ">
             <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr] mt-10  md:mt-0">
               <div className="grid grid-cols-2 gap-3 rounded-[2rem] border border-white/14 bg-[rgba(6,10,20,0.8)] px-4 py-5 shadow-[0_30px_90px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:grid-cols-4 sm:px-6">
-                {STATS.map(({ icon: Icon, value, label }) => (
+                {STATS.map(({ icon: Icon, key, label }) => (
                   <div
                     key={label}
                     className="flex min-w-0 flex-col items-center justify-center rounded-2xl px-2 py-2 text-center transition-transform hover:-translate-y-1 sm:border-r sm:border-white/8 last:border-r-0 sm:pr-3"
                   >
                     <Icon className="size-7 text-amber-glow" />
-                    <p className="mt-3 text-xl font-black text-white sm:text-[2.2rem]">{value}</p>
+                    <p className="mt-3 text-xl font-black text-white sm:text-[2.2rem]">
+                      {formatter.format(statsDisplay[key])}
+                    </p>
                     <p className="text-sm text-white/78 sm:text-base">{label}</p>
                   </div>
                 ))}
@@ -441,7 +504,9 @@ function HomePage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <h3 className="truncate text-lg font-black text-white">{group.name}</h3>
-                        <p className="mt-1 line-clamp-2 text-sm text-white/55">{group.description}</p>
+                        <p className="mt-1 line-clamp-2 text-sm text-white/55">
+                          {group.description}
+                        </p>
                       </div>
                       <span className="rounded-full border border-amber-glow/25 bg-amber-glow/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-glow">
                         Live
@@ -462,7 +527,9 @@ function HomePage() {
                           ) : null;
                         })}
                       </div>
-                      <p className="text-sm font-semibold text-white/70">{group.members.length} members</p>
+                      <p className="text-sm font-semibold text-white/70">
+                        {group.members.length} members
+                      </p>
                     </div>
                   </div>
                 </Link>

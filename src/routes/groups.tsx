@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { api, API_ENABLED } from "@/lib/api";
 import { getUser } from "@/lib/mock-data";
@@ -142,7 +142,7 @@ function GroupsPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:py-10">
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_360px]">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_360px]  hidden lg:block">
           <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-6 sm:p-8">
             <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.12),transparent_70%)] xl:block" />
             <div className="relative">
@@ -397,11 +397,15 @@ export function Modal({
   children,
   onClose,
   mobileFullscreen = false,
+  panelClassName = "",
+  desktopPanelClassName,
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
   mobileFullscreen?: boolean;
+  panelClassName?: string;
+  desktopPanelClassName?: string;
 }) {
   return (
     <div
@@ -415,9 +419,11 @@ export function Modal({
       <div
         className={`bg-stage-card border border-white/10 shadow-2xl ${
           mobileFullscreen
-            ? "min-h-screen w-full rounded-none p-4 sm:min-h-0 sm:max-w-md sm:rounded-3xl sm:p-6"
+            ? `min-h-screen w-full rounded-none p-4 sm:min-h-0 ${
+                desktopPanelClassName || "sm:max-w-md"
+              } sm:rounded-3xl sm:p-6`
             : "w-full max-w-md rounded-3xl p-6"
-        }`}
+        } ${panelClassName}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

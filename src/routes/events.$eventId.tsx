@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+﻿import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { PaginationBar } from "@/components/PaginationBar";
 import { useData } from "@/lib/store";
@@ -55,6 +55,19 @@ type ViewSong = ReturnType<typeof normalizeSong>;
 type EventState = Event | ViewEvent;
 type PlaylistState = Playlist | ViewEvent["playlists"][number];
 type PlaylistItemState = PlaylistItem | ViewEvent["playlists"][number]["items"][number];
+
+function getSongChordPreview(song: ViewSong) {
+  const chords = Array.from(
+    new Set(
+      song.parts
+        .flatMap((part) => part.chords.split(/\s+/))
+        .map((chord) => chord.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return chords.slice(0, 12).join(" · ") || song.key || "-";
+}
 
 function EventPage() {
   const { eventId } = Route.useParams();
@@ -365,7 +378,7 @@ function EventPage() {
             <span>
               {new Date(ev.date).toLocaleString([], { dateStyle: "full", timeStyle: "short" })}
             </span>
-            <span>• {ev.duration} min</span>
+            <span>â€¢ {ev.duration} min</span>
           </div>
           <div className="mt-4 flex gap-3 flex-wrap">
             <Link
@@ -514,14 +527,14 @@ function EventPage() {
                         disabled={idx === 0 || actionKey === `item:move:${pl.id}`}
                         className="text-white/30 hover:text-amber-glow disabled:opacity-20 text-xs"
                       >
-                        ▲
+                        â–²
                       </button>
                       <button
                         onClick={() => idx < pl.items.length - 1 && moveItem(pl.id, idx, idx + 1)}
                         disabled={idx === pl.items.length - 1 || actionKey === `item:move:${pl.id}`}
                         className="text-white/30 hover:text-amber-glow disabled:opacity-20 text-xs"
                       >
-                        ▼
+                        â–¼
                       </button>
                     </div>
                     <GripVertical className="hidden size-3.5 text-white/20 sm:block" />
@@ -529,7 +542,7 @@ function EventPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold truncate">{s.title}</p>
                       <p className="text-[10px] text-white/40 truncate">
-                        {s.artist} • {item.partName ?? "Full Song"}
+                        {s.artist} â€¢ {item.partName ?? "Full Song"}
                       </p>
                     </div>
                     <button
@@ -593,120 +606,145 @@ function EventPage() {
       )}
 
       {addSongFor && (
-        <Modal title="Add song or section" onClose={() => setAddSongFor(null)} mobileFullscreen>
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              value={songQ}
-              onChange={(e) => setSongQ(e.target.value)}
-              placeholder="Search song..."
-              className={inputCls}
-            />
-            <select
-              value={partChoice}
-              onChange={(e) => setPartChoice(e.target.value)}
-              className={inputCls + " w-40 shrink-0"}
-            >
-              {PART_OPTIONS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="mb-3">
-            <button
-              onClick={() => setShowSongFilters((current) => !current)}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/70"
-            >
-              {showSongFilters ? "Hide filters" : "Show filters"}
-            </button>
-          </div>
-          {showSongFilters && (
-            <div className="grid grid-cols-1 gap-2 mb-3 sm:grid-cols-2">
-              <input
-                value={songFilters.artist}
-                onChange={(e) =>
-                  setSongFilters((current) => ({ ...current, artist: e.target.value }))
-                }
-                placeholder="Artist name"
-                className={inputCls}
-              />
-              <select
-                value={songFilters.key}
-                onChange={(e) => setSongFilters((current) => ({ ...current, key: e.target.value }))}
-                className={inputCls}
-              >
-                <option value="">Key</option>
-                {KEY_OPTIONS.filter(Boolean).map((key) => (
-                  <option key={key} value={key}>
-                    {key}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={songFilters.beat}
-                onChange={(e) =>
-                  setSongFilters((current) => ({ ...current, beat: e.target.value }))
-                }
-                className={inputCls}
-              >
-                <option value="">Beat</option>
-                {BEAT_OPTIONS.filter(Boolean).map((beat) => (
-                  <option key={beat} value={beat}>
-                    {beat}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={songFilters.source}
-                onChange={(e) =>
-                  setSongFilters((current) => ({ ...current, source: e.target.value }))
-                }
-                className={inputCls}
-              >
-                <option value="">Source</option>
-                {SOURCE_OPTIONS.filter(Boolean).map((source) => (
-                  <option key={source} value={source}>
-                    {source}
-                  </option>
-                ))}
-              </select>
+        <Modal
+          title="Add song or section"
+          onClose={() => setAddSongFor(null)}
+          mobileFullscreen
+          desktopPanelClassName="sm:max-w-6xl"
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px_180px]">
+              <Field label="Search songs">
+                <input
+                  value={songQ}
+                  onChange={(e) => setSongQ(e.target.value)}
+                  placeholder="Search title, artist, key..."
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Add mode">
+                <select
+                  value={partChoice}
+                  onChange={(e) => setPartChoice(e.target.value)}
+                  className={inputCls}
+                >
+                  {PART_OPTIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="flex items-end">
+                <button
+                  onClick={() => setShowSongFilters((current) => !current)}
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-white/80 transition-colors hover:bg-white/[0.08]"
+                >
+                  {showSongFilters ? "Hide filters" : "Show filters"}
+                </button>
+              </div>
             </div>
-          )}
-          <div className="max-h-80 overflow-y-auto space-y-1.5">
-            {songLoading && <p className="py-3 text-xs text-white/50">Loading songs...</p>}
-            {librarySongs.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => addItem(addSongFor, s.id)}
-                disabled={Boolean(actionKey)}
-                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-left disabled:opacity-60"
-              >
-                <img src={s.cover} alt={s.title} className="size-10 rounded-md object-cover" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate">{s.title}</p>
-                  <p className="text-[10px] text-white/40 truncate">
-                    {s.artist} • {s.key}
-                  </p>
+
+            {showSongFilters ? (
+              <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:grid-cols-2 xl:grid-cols-4">
+                <input
+                  value={songFilters.artist}
+                  onChange={(e) =>
+                    setSongFilters((current) => ({ ...current, artist: e.target.value }))
+                  }
+                  placeholder="Artist name"
+                  className={inputCls}
+                />
+                <select
+                  value={songFilters.key}
+                  onChange={(e) =>
+                    setSongFilters((current) => ({ ...current, key: e.target.value }))
+                  }
+                  className={inputCls}
+                >
+                  <option value="">Key</option>
+                  {KEY_OPTIONS.filter(Boolean).map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={songFilters.beat}
+                  onChange={(e) =>
+                    setSongFilters((current) => ({ ...current, beat: e.target.value }))
+                  }
+                  className={inputCls}
+                >
+                  <option value="">Beat</option>
+                  {BEAT_OPTIONS.filter(Boolean).map((beat) => (
+                    <option key={beat} value={beat}>
+                      {beat}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={songFilters.source}
+                  onChange={(e) =>
+                    setSongFilters((current) => ({ ...current, source: e.target.value }))
+                  }
+                  className={inputCls}
+                >
+                  <option value="">Source</option>
+                  {SOURCE_OPTIONS.filter(Boolean).map((source) => (
+                    <option key={source} value={source}>
+                      {source}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div className="space-y-3 min-w-0">
+              <div className="max-h-[34rem] overflow-y-auto overflow-x-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+                <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+                  {songLoading && <p className="py-3 text-xs text-white/50">Loading songs...</p>}
+                  {librarySongs.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => addItem(addSongFor, s.id)}
+                      disabled={Boolean(actionKey)}
+                      className="flex w-full min-w-0 flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-left transition-colors hover:border-amber-glow/30 hover:bg-white/[0.06] disabled:opacity-60 sm:flex-row sm:items-start sm:gap-4"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-base font-bold">{s.title}</p>
+                        <p className="truncate text-sm text-white/45">{s.artist}</p>
+                        <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/30">
+                          Chords Used
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-sm text-white/60">
+                          {getSongChordPreview(s)}
+                        </p>
+                      </div>
+                      <span className="self-start rounded-full border border-amber-glow/20 bg-amber-glow/10 px-4 py-2 text-xs font-bold text-amber-glow sm:shrink-0 sm:self-center">
+                        {actionKey === `item:add:${addSongFor}:${s.id}` ? "ADDING..." : "ADD"}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                <span className="text-[10px] font-bold text-amber-glow">
-                  {actionKey === `item:add:${addSongFor}:${s.id}` ? "ADDING..." : "ADD"}
-                </span>
-              </button>
-            ))}
-            {!librarySongs.length && !songLoading && (
-              <p className="py-6 text-center text-xs text-white/40">No songs found.</p>
-            )}
+                {!librarySongs.length && !songLoading && (
+                  <p className="py-10 text-center text-sm text-white/40">No songs found.</p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-white/8 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-white/45">{songTotal} songs matched</p>
+                <div className="sm:min-w-[320px]">
+                  <PaginationBar
+                    page={songPage}
+                    pages={songPages}
+                    onPageChange={setSongPage}
+                    loading={songLoading}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="mt-3">
-            <PaginationBar
-              page={songPage}
-              pages={songPages}
-              onPageChange={setSongPage}
-              loading={songLoading}
-            />
-          </div>
-          <p className="mt-2 text-[10px] text-white/35">{songTotal} songs matched</p>
         </Modal>
       )}
     </AppShell>

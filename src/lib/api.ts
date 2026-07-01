@@ -69,6 +69,17 @@ type StageResponse = { event: ApiRecord; songs: ApiRecord[]; state: ApiRecord | 
 type UserListResponse = PaginatedResponse<"users">;
 type AdminUserCreateResponse = { user: ApiRecord; created: boolean; promoted: boolean };
 type SettingsResponse = { settings: ApiRecord };
+type HomeStatsResponse = {
+  stats: {
+    songs: number;
+    artists: number;
+    chords: number;
+    users: number;
+    groups: number;
+    events: number;
+  };
+  cachedAt: number;
+};
 type SongFilters = {
   artistName?: string;
   key?: string;
@@ -113,6 +124,7 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  getHomeStats: () => request<HomeStatsResponse>("/api/home/stats"),
 
   // Artists / songs
   listArtists: (q = "", page = 1, limit = 24) =>

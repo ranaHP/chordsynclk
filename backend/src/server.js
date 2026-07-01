@@ -17,6 +17,7 @@ import groupRoutes from "./routes/groups.js";
 import eventRoutes from "./routes/events.js";
 import liveRoutes from "./routes/live.js";
 import settingsRoutes from "./routes/settings.js";
+import homeRoutes from "./routes/home.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -38,6 +39,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/artists", artistRoutes);
 app.use("/api/songs", songRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/home", homeRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/live", liveRoutes);
